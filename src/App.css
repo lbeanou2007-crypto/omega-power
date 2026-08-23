@@ -1,0 +1,110 @@
+/*
+ * IHM de supervision batterie : rangee de tuiles KPI + serie temporelle.
+ * Les couleurs d'etat (--etat-*) sont reservees a l'etat ok/crit :
+ * elles ne servent jamais a colorer une courbe.
+ */
+.ihm-dashboard {
+    --surface: #ffffff;
+    --ink-secondaire: #55677a;
+    --ink-muted: #7d8b97;
+    --hairline: rgba(44, 62, 80, 0.12);
+    --etat-ok: #0ca30c;
+    --etat-crit: #d03b3b;
+
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 24px 48px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+}
+
+/* Tout ce qui n'est pas une tuile (le graphique) occupe la largeur entiere. */
+.ihm-dashboard > :not(.metric-card) {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 860px) {
+    .ihm-dashboard {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* --- Tuile KPI ------------------------------------------------------- */
+.metric-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 16px 18px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-left: 4px solid var(--ink-muted);
+    border-radius: var(--rayon, 8px);
+}
+
+/* Libelle : encre secondaire, jamais la couleur de la donnee. */
+.metric-card > :first-child {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--ink-secondaire);
+}
+
+/* Valeur : chiffres proportionnels, taille figure. */
+.metric-card > :nth-child(2) {
+    font-size: 30px;
+    font-weight: 600;
+    line-height: 1.1;
+    color: var(--couleur-texte);
+    font-variant-numeric: normal;
+}
+
+/*
+ * L'etat est porte par une icone + un mot, pas seulement par la couleur
+ * (lisible en daltonisme, en niveaux de gris et en forced-colors).
+ */
+.metric-card::after {
+    font-size: 12px;
+    font-weight: 600;
+    margin-top: 2px;
+}
+
+.metric-card.ok {
+    border-left-color: var(--etat-ok);
+}
+
+.metric-card.ok::after {
+    content: "\2713  Nominal";
+    color: var(--etat-ok);
+}
+
+.metric-card.crit {
+    border-left-color: var(--etat-crit);
+}
+
+.metric-card.crit::after {
+    content: "\26A0  Hors plage";
+    color: var(--etat-crit);
+}
+
+/* --- Habillage du graphique ------------------------------------------ */
+.ihm-dashboard .recharts-wrapper {
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--rayon, 8px);
+}
+
+.ihm-dashboard .recharts-cartesian-axis-tick text {
+    fill: var(--ink-muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+.ihm-dashboard .recharts-cartesian-grid line {
+    stroke: var(--hairline);
+}
+
+.ihm-dashboard .recharts-legend-item-text {
+    color: var(--ink-secondaire) !important;
+    font-size: 12px;
+}

@@ -1,0 +1,22 @@
+/* Variables de theme : on change une couleur ici, tout le site suit. */
+:root {
+    --couleur-fond: #f4f7f6;
+    --couleur-texte: #2c3e50;
+    --couleur-primaire: #3498db;
+    --couleur-primaire-foncee: #2980b9;
+    --couleur-danger: #c0392b;
+    --couleur-bordure: #e1e8ed;
+    --rayon: 8px;
+    --ombre: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--couleur-fond);
+    color: var(--couleur-texte);
+}

@@ -1,0 +1,40 @@
+.statut__list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.statut__item {
+    background: #fff;
+    border: 1px solid var(--couleur-bordure);
+    margin-bottom: 10px;
+    padding: 15px 20px;
+    border-radius: var(--rayon);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+    transition: transform 0.2s, border-color 0.2s;
+}
+
+.statut__item:hover {
+    transform: translateX(5px);
+    border-color: var(--couleur-primaire);
+}
+
+.statut__vide {
+    color: #7f8c8d;
+    font-style: italic;
+}
+
+.statut__detail {
+    margin-top: 30px;
+    padding: 20px;
+    background: #e8f4fd;
+    border-left: 5px solid var(--couleur-primaire);
+    border-radius: 4px;
+}
+
+.statut__detail h3 {
+    margin-top: 0;
+}

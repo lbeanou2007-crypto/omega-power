@@ -1,0 +1,21 @@
+.layout {
+    min-height: 100vh;
+    padding: 40px 20px;
+}
+
+.layout__box {
+    max-width: 800px;
+    margin: 0 auto;
+    background: #fff;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: var(--ombre);
+}
+
+.layout__title {
+    color: var(--couleur-texte);
+    border-bottom: 2px solid var(--couleur-primaire);
+    padding-bottom: 10px;
+    margin: 0 0 30px;
+    font-size: 1.5rem;
+}

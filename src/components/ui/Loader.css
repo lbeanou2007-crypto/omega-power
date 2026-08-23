@@ -1,0 +1,22 @@
+.loader {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 0;
+    color: #7f8c8d;
+}
+
+.loader__spinner {
+    width: 18px;
+    height: 18px;
+    border: 3px solid var(--couleur-bordure);
+    border-top-color: var(--couleur-primaire);
+    border-radius: 50%;
+    animation: loader-rotation 0.8s linear infinite;
+}
+
+@keyframes loader-rotation {
+    to {
+        transform: rotate(360deg);
+    }
+}
