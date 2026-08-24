@@ -9,7 +9,7 @@ function statusOf(value, min, max) {
 
 export default function App() {
   const [data, setData] = useState({
-    soc: 70 ,
+    soc: 10,
     tension: 48.2,
     courant: -6.4,
     temp: 28.5,
