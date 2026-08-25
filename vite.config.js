@@ -9,7 +9,7 @@ export default defineConfig({
     // Avantage : plus aucun probleme de CORS en developpement.
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: ' http://192.168.100.197:8090',
         changeOrigin: true,
       },
     },
