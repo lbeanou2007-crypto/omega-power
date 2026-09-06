@@ -108,3 +108,32 @@
     color: var(--ink-secondaire) !important;
     font-size: 12px;
 }
+
+/* Les deux menus (boitier, temperature) tiennent sur une seule ligne. */
+.selecteur {
+  width: 100%;
+  margin-bottom: 20px;
+  font-size: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: center;
+}
+
+.selecteur select {
+  padding: 6px 10px;
+  font-size: 1rem;
+}
+
+.horodatage {
+  opacity: 0.7;
+  font-size: 0.85rem;
+}
+
+.erreur {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 15px;
+  background: #f4433620;
+  border-left: 4px solid #f44336;
+}
