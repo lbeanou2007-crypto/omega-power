@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import "./App.css";
+import { fetchMesure } from "./db";
 
 // Plage nominale (min/max, utilisée pour l'état ok/crit et l'axe Y du graphique)
 // et bornes physiques absolues (floor/ceil, utilisées pour empêcher la simulation
@@ -24,23 +25,11 @@ const LIMITS = {
 const BOITIERS = ["boitier_V16", "boitier_BMS_V14", "boitier_V16+MAC"];
 const TEMP_MODES = ["Groupe 1", "Groupe 2", "Les deux"];
 
-// Borne "value" entre floor et ceil (les limites physiques, pas la plage nominale).
-function clamp(value, floor, ceil) {
-  return Math.min(ceil, Math.max(floor, value));
-}
-
 // Détermine si une valeur est dans sa plage nominale (min/max) ou en alerte.
 // Utilisé à la fois pour la classe CSS de la tuile (ok/crit) et pour le badge
 // généré automatiquement par App.css (::after sur .metric-card).
 function statusOf(value, min, max) {
   return value < min || value > max ? "crit" : "ok";
-}
-
-// Applique un pas aléatoire à une métrique tout en la gardant dans ses bornes
-// physiques (floor/ceil), pour simuler une mesure réaliste sans valeur absurde.
-function stepValue(prev, key, delta) {
-  const { floor, ceil } = LIMITS[key];
-  return clamp(prev + delta, floor, ceil);
 }
 
 export default function App() {
@@ -61,33 +50,46 @@ export default function App() {
   // et par l'export CSV.
   const [history, setHistory] = useState([]);
   const [lastUpdate, setLastUpdate] = useState(null);
+  // Message d'erreur du dernier appel "BDD" en échec (distinct de la
+  // déconnexion manuelle via le bouton).
+  const [erreurReseau, setErreurReseau] = useState(null);
 
   useEffect(() => {
-    // Si on simule une déconnexion, on arrête complètement la simulation
-    // (pas de nouvelles mesures, pas de mise à jour de l'historique).
+    // Si on simule une déconnexion, on arrête complètement le sondage
+    // (pas de nouvel appel, pas de mise à jour de l'historique).
     if (!connected) return undefined;
 
-    const id = setInterval(() => {
-      setData((prev) => {
-        const next = {
-          soc: stepValue(prev.soc, "soc", (Math.random() - 0.5) * 2),
-          tension: stepValue(prev.tension, "tension", (Math.random() - 0.5) * 0.5),
-          courant: stepValue(prev.courant, "courant", (Math.random() - 0.5) * 1),
-          temp1: stepValue(prev.temp1, "temp1", (Math.random() - 0.5) * 0.5),
-          temp2: stepValue(prev.temp2, "temp2", (Math.random() - 0.5) * 0.5),
-        };
+    // "Annulé" évite d'appliquer le résultat d'un appel encore en vol après
+    // que le composant ait été démonté ou que boitier/connected aient changé.
+    let annule = false;
+
+    async function sonder() {
+      try {
+        const mesure = await fetchMesure(boitier);
+        if (annule) return;
+
         const now = new Date();
-        const point = { time: now.toLocaleTimeString("fr-FR"), ...next };
+        const point = { time: now.toLocaleTimeString("fr-FR"), ...mesure };
+
+        setData(mesure);
         // On ne garde que les 20 derniers points pour éviter que l'historique
         // (et donc les graphiques/le CSV) ne grossisse indéfiniment.
         setHistory((prevHistory) => [...prevHistory, point].slice(-20));
         setLastUpdate(now);
-        return next;
-      });
-    }, 2500);
+        setErreurReseau(null);
+      } catch (err) {
+        if (!annule) setErreurReseau(err.message);
+      }
+    }
 
-    return () => clearInterval(id);
-  }, [connected]); // relancé si on (re)connecte/déconnecte
+    sonder(); // premier appel immédiat, sans attendre le premier intervalle
+    const id = setInterval(sonder, 2500);
+
+    return () => {
+      annule = true;
+      clearInterval(id);
+    };
+  }, [connected, boitier]); // relancé si on (re)connecte ou change de boîtier
 
   // Liste complète des métriques possibles, avant filtrage par le sélecteur
   // de température. Chaque entrée regroupe tout ce dont une tuile a besoin :
@@ -164,6 +166,9 @@ export default function App() {
 
       {!connected && (
         <div className="erreur">Connexion au boîtier {boitier} interrompue.</div>
+      )}
+      {connected && erreurReseau && (
+        <div className="erreur">Erreur de lecture : {erreurReseau}</div>
       )}
 
       {metrics.map((m) => {
