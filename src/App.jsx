@@ -89,8 +89,10 @@ export default function App() {
       point.time,
       ...metrics.map((m) => point[m.key].toFixed(1)),
     ]);
-    const csvContent = [headers, ...rows].map((row) => row.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    // Séparateur ";" car Excel en locale française utilise "," comme séparateur
+    // décimal, et un BOM UTF-8 pour que les accents s'affichent correctement.
+    const csvContent = [headers, ...rows].map((row) => row.join(";")).join("\r\n");
+    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
