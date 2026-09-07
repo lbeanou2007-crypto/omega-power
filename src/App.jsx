@@ -10,6 +10,9 @@ import {
 } from "recharts";
 import "./App.css";
 
+// Plage nominale (min/max, utilisée pour l'état ok/crit et l'axe Y du graphique)
+// et bornes physiques absolues (floor/ceil, utilisées pour empêcher la simulation
+// de dériver vers des valeurs impossibles, ex: SOC > 100%).
 const LIMITS = {
   soc: { min: 20, max: 100, floor: 0, ceil: 100, color: "#0d7fbf" },
   tension: { min: 44, max: 52, floor: 40, ceil: 56, color: "#2f8f4e" },
@@ -21,14 +24,20 @@ const LIMITS = {
 const BOITIERS = ["boitier_V16", "boitier_BMS_V14", "boitier_V16+MAC"];
 const TEMP_MODES = ["Groupe 1", "Groupe 2", "Les deux"];
 
+// Borne "value" entre floor et ceil (les limites physiques, pas la plage nominale).
 function clamp(value, floor, ceil) {
   return Math.min(ceil, Math.max(floor, value));
 }
 
+// Détermine si une valeur est dans sa plage nominale (min/max) ou en alerte.
+// Utilisé à la fois pour la classe CSS de la tuile (ok/crit) et pour le badge
+// généré automatiquement par App.css (::after sur .metric-card).
 function statusOf(value, min, max) {
   return value < min || value > max ? "crit" : "ok";
 }
 
+// Applique un pas aléatoire à une métrique tout en la gardant dans ses bornes
+// physiques (floor/ceil), pour simuler une mesure réaliste sans valeur absurde.
 function stepValue(prev, key, delta) {
   const { floor, ceil } = LIMITS[key];
   return clamp(prev + delta, floor, ceil);
@@ -38,6 +47,8 @@ export default function App() {
   const [boitier, setBoitier] = useState(BOITIERS[0]);
   const [tempMode, setTempMode] = useState("Les deux");
   const [connected, setConnected] = useState(true);
+
+  // Valeurs "instantanées" affichées dans les tuiles.
   const [data, setData] = useState({
     soc: 75,
     tension: 48.2,
@@ -45,11 +56,17 @@ export default function App() {
     temp1: 28.5,
     temp2: 26.1,
   });
+
+  // Historique glissant (20 derniers points) utilisé par les mini-graphiques
+  // et par l'export CSV.
   const [history, setHistory] = useState([]);
   const [lastUpdate, setLastUpdate] = useState(null);
 
   useEffect(() => {
+    // Si on simule une déconnexion, on arrête complètement la simulation
+    // (pas de nouvelles mesures, pas de mise à jour de l'historique).
     if (!connected) return undefined;
+
     const id = setInterval(() => {
       setData((prev) => {
         const next = {
@@ -61,14 +78,20 @@ export default function App() {
         };
         const now = new Date();
         const point = { time: now.toLocaleTimeString("fr-FR"), ...next };
+        // On ne garde que les 20 derniers points pour éviter que l'historique
+        // (et donc les graphiques/le CSV) ne grossisse indéfiniment.
         setHistory((prevHistory) => [...prevHistory, point].slice(-20));
         setLastUpdate(now);
         return next;
       });
     }, 2500);
-    return () => clearInterval(id);
-  }, [connected]);
 
+    return () => clearInterval(id);
+  }, [connected]); // relancé si on (re)connecte/déconnecte
+
+  // Liste complète des métriques possibles, avant filtrage par le sélecteur
+  // de température. Chaque entrée regroupe tout ce dont une tuile a besoin :
+  // libellé, unité, valeur courante, plage nominale/bornes et couleur.
   const allMetrics = [
     { key: "soc", label: "SOC", unit: "%", value: data.soc, ...LIMITS.soc },
     { key: "tension", label: "Tension", unit: "V", value: data.tension, ...LIMITS.tension },
@@ -77,6 +100,8 @@ export default function App() {
     { key: "temp2", label: "Température (groupe 2)", unit: "°C", value: data.temp2, ...LIMITS.temp2 },
   ];
 
+  // Filtre les tuiles température affichées selon le sélecteur "Groupe 1 /
+  // Groupe 2 / Les deux". SOC, tension et courant sont toujours affichés.
   const metrics = allMetrics.filter((m) => {
     if (m.key === "temp1") return tempMode === "Groupe 1" || tempMode === "Les deux";
     if (m.key === "temp2") return tempMode === "Groupe 2" || tempMode === "Les deux";
@@ -90,7 +115,9 @@ export default function App() {
       ...metrics.map((m) => point[m.key].toFixed(1)),
     ]);
     // Séparateur ";" car Excel en locale française utilise "," comme séparateur
-    // décimal, et un BOM UTF-8 pour que les accents s'affichent correctement.
+    // décimal, et un BOM UTF-8 ("\uFEFF") pour que les accents s'affichent
+    // correctement (sans ça Excel devine le mauvais encodage et affiche
+    // "TempÃ©rature" au lieu de "Température").
     const csvContent = [headers, ...rows].map((row) => row.join(";")).join("\r\n");
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -124,6 +151,7 @@ export default function App() {
             ))}
           </select>
         </label>
+        {/* Bouton de test : simule une coupure de connexion sans code réseau réel. */}
         <button type="button" onClick={() => setConnected((c) => !c)}>
           {connected ? "simuler déconnexion" : "reconnecter"}
         </button>
@@ -141,16 +169,29 @@ export default function App() {
       {metrics.map((m) => {
         const status = statusOf(m.value, m.min, m.max);
         return (
+          // La classe "ok"/"crit" pilote la couleur de bordure ET le badge
+          // "✓ Nominal" / "⚠ Hors plage" généré par App.css (::after) — on ne
+          // génère pas ce texte ici, uniquement la classe.
           <div key={m.key} className={`metric-card ${status}`}>
+            {/* :first-child dans App.css → style du libellé */}
             <div>{m.label}</div>
+            {/* :nth-child(2) dans App.css → style de la valeur.
+                --couleur-texte est une variable CSS lue par App.css pour teinter
+                le chiffre selon la métrique, indépendamment de l'état ok/crit. */}
             <div style={{ "--couleur-texte": m.color }}>
               {m.value.toFixed(1)} {m.unit}
             </div>
+            {/* Mini-graphique propre à cette métrique : 3e enfant de la tuile,
+                ne perturbe pas les sélecteurs :first-child/:nth-child(2) et
+                l'état ::after (toujours calculé après tous les enfants). */}
             <div style={{ width: "100%", height: 110, marginTop: 4 }}>
               <ResponsiveContainer>
                 <LineChart data={history} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="time" tick={{ fontSize: 9 }} minTickGap={30} />
+                  {/* domain fixé sur floor/ceil (bornes physiques) plutôt que sur
+                      min/max nominal, pour que l'axe ne "saute" pas si une
+                      valeur sort de la plage nominale. */}
                   <YAxis tick={{ fontSize: 9 }} domain={[m.floor, m.ceil]} />
                   <Tooltip
                     formatter={(v) => [`${v.toFixed(1)} ${m.unit}`, m.label]}
@@ -171,6 +212,7 @@ export default function App() {
         );
       })}
 
+      {/* Désactivé tant qu'il n'y a aucune mesure à exporter. */}
       <button onClick={exportToCSV} disabled={history.length === 0}>
         Exporter l'historique en CSV
       </button>
