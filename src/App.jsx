@@ -40,7 +40,7 @@ export default function App() {
   // Valeurs "instantanées" affichées dans les tuiles.
   const [data, setData] = useState({
     soc: 75,
-    tension: 448.2,
+    tension: 48.2,
     courant: -6.4,
     temp1: 28.5,
     temp2: 26.1,
