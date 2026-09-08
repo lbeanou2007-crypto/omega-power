@@ -1,0 +1,5 @@
+Le jour où tu as une vraie API, 
+tu remplaces uniquement le contenu de fetchMesure() dans db.js 
+par un vrai fetch("http://ton-serveur/api/mesures?boitier=" + boitier)
+ — App.jsx n'a rien à changer, tant que la fonction reste async et retourne un objet avec les mêmes clés 
+ (soc, tension, courant, temp1, temp2).

@@ -39,7 +39,7 @@ export default function App() {
 
   // Valeurs "instantanées" affichées dans les tuiles.
   const [data, setData] = useState({
-    soc: 75,
+    soc: 500,
     tension: 48.2,
     courant: -6.4,
     temp1: 28.5,
@@ -98,8 +98,8 @@ export default function App() {
     { key: "soc", label: "SOC", unit: "%", value: data.soc, ...LIMITS.soc },
     { key: "tension", label: "Tension", unit: "V", value: data.tension, ...LIMITS.tension },
     { key: "courant", label: "Courant", unit: "A", value: data.courant, ...LIMITS.courant },
-    { key: "temp1", label: "Température (groupe 1)", unit: "°C", value: data.temp1, ...LIMITS.temp1 },
-    { key: "temp2", label: "Température (groupe 2)", unit: "°C", value: data.temp2, ...LIMITS.temp2 },
+    { key: "temp1", label: "Temperature (groupe 1)", unit: "°C", value: data.temp1, ...LIMITS.temp1 },
+    { key: "temp2", label: "Temperature (groupe 2)", unit: "°C", value: data.temp2, ...LIMITS.temp2 },
   ];
 
   // Filtre les tuiles température affichées selon le sélecteur "Groupe 1 /
