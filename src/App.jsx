@@ -24,6 +24,10 @@ const LIMITS = {
 
 const BOITIERS = ["boitier_V16", "boitier_BMS_V14", "boitier_V16+MAC"];
 const TEMP_MODES = ["Groupe 1", "Groupe 2", "Les deux"];
+const MOIS = [
+  "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+  "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
+];
 
 // Détermine si une valeur est dans sa plage nominale (min/max) ou en alerte.
 // Utilisé à la fois pour la classe CSS de la tuile (ok/crit) et pour le badge
@@ -32,14 +36,92 @@ function statusOf(value, min, max) {
   return value < min || value > max ? "crit" : "ok";
 }
 
+// --- Génération de données historiques SIMULÉES ---------------------------
+// Pas de vraie base de données pour l'instant : on génère une journée de
+// mesures plausibles pour un (boîtier, jour) donné. Le générateur est
+// "seedé" à partir de la date + du boîtier, donc une même recherche renvoie
+// toujours les mêmes valeurs (utile pour tester l'IHM de façon reproductible).
+
+// Petit générateur pseudo-aléatoire déterministe (mulberry32).
+function creerRng(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Transforme une chaîne (ex: "2024-03-14|boitier_V16") en entier pour servir
+// de graine au générateur pseudo-aléatoire.
+function hashSeed(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+// Génère un point de mesure plausible pour un instant donné de la journée
+// (heureDecimal ∈ [0, 24[), avec une légère variation sinusoïdale + du bruit.
+function genererPoint(rng, heureDecimal) {
+  const cycle = Math.sin((heureDecimal / 24) * Math.PI * 2);
+  const soc = clamp(60 + cycle * 25 + (rng() - 0.5) * 8, LIMITS.soc.floor, LIMITS.soc.ceil);
+  const tension = clamp(48 + cycle * 2.5 + (rng() - 0.5) * 1.2, LIMITS.tension.floor, LIMITS.tension.ceil);
+  const courant = clamp(cycle * 12 + (rng() - 0.5) * 6, LIMITS.courant.floor, LIMITS.courant.ceil);
+  const temp1 = clamp(24 + cycle * 8 + (rng() - 0.5) * 3, LIMITS.temp1.floor, LIMITS.temp1.ceil);
+  const temp2 = clamp(23 + cycle * 8 + (rng() - 0.5) * 3, LIMITS.temp2.floor, LIMITS.temp2.ceil);
+  return { soc, tension, courant, temp1, temp2 };
+}
+
+function clamp(v, min, max) {
+  return Math.min(max, Math.max(min, v));
+}
+
+// Génère une journée complète (un point toutes les 30 minutes) pour le
+// boîtier et la date donnés.
+function genererHistoriqueSimule(boitier, annee, mois, jour) {
+  const dateStr = `${annee}-${String(mois).padStart(2, "0")}-${String(jour).padStart(2, "0")}`;
+  const rng = creerRng(hashSeed(`${dateStr}|${boitier}`));
+  const points = [];
+  for (let demiHeure = 0; demiHeure < 48; demiHeure++) {
+    const heureDecimal = demiHeure / 2;
+    const h = Math.floor(heureDecimal);
+    const m = heureDecimal % 1 === 0 ? "00" : "30";
+    const mesure = genererPoint(rng, heureDecimal);
+    points.push({
+      time: `${String(h).padStart(2, "0")}:${m}`,
+      ...mesure,
+    });
+  }
+  return { dateStr, points };
+}
+
+// Vérifie qu'un triplet jour/mois/année correspond à une vraie date
+// (rejette par ex. le 31 février) et qu'elle n'est pas dans le futur.
+function dateEstValide(annee, mois, jour) {
+  const d = new Date(annee, mois - 1, jour);
+  const valide =
+    d.getFullYear() === annee && d.getMonth() === mois - 1 && d.getDate() === jour;
+  if (!valide) return false;
+  return d <= new Date();
+}
+
 export default function App() {
   const [boitier, setBoitier] = useState(BOITIERS[0]);
   const [tempMode, setTempMode] = useState("Les deux");
   const [connected, setConnected] = useState(true);
 
-  // Valeurs "instantanées" affichées dans les tuiles.
+  // "live" : mesures en direct (comportement d'origine).
+  // "historique" : résultat d'une recherche par date, données simulées.
+  const [mode, setMode] = useState("live");
+
+  // Valeurs "instantanées" affichées dans les tuiles (mode live).
   const [data, setData] = useState({
-    soc: 75,
+    soc: 110,
     tension: 48.2,
     courant: -6.4,
     temp1: 28.5,
@@ -47,14 +129,29 @@ export default function App() {
   });
 
   // Historique glissant (20 derniers points) utilisé par les mini-graphiques
-  // et par l'export CSV.
+  // et par l'export CSV en mode live.
   const [history, setHistory] = useState([]);
   const [lastUpdate, setLastUpdate] = useState(null);
   // Message d'erreur du dernier appel "BDD" en échec (distinct de la
   // déconnexion manuelle via le bouton).
   const [erreurReseau, setErreurReseau] = useState(null);
 
+  // --- État de la recherche par date -----------------------------------
+  const maintenant = new Date();
+  const [jourRecherche, setJourRecherche] = useState(maintenant.getDate());
+  const [moisRecherche, setMoisRecherche] = useState(maintenant.getMonth() + 1);
+  const [anneeRecherche, setAnneeRecherche] = useState(maintenant.getFullYear());
+  const [resultatRecherche, setResultatRecherche] = useState(null); // { dateStr, points }
+  const [erreurRecherche, setErreurRecherche] = useState(null);
+
+  const anneesDisponibles = [];
+  for (let a = maintenant.getFullYear(); a >= maintenant.getFullYear() - 5; a--) {
+    anneesDisponibles.push(a);
+  }
+
   useEffect(() => {
+    // En mode historique on n'interroge pas le boîtier en direct.
+    if (mode !== "live") return undefined;
     // Si on simule une déconnexion, on arrête complètement le sondage
     // (pas de nouvel appel, pas de mise à jour de l'historique).
     if (!connected) return undefined;
@@ -89,17 +186,45 @@ export default function App() {
       annule = true;
       clearInterval(id);
     };
-  }, [connected, boitier]); // relancé si on (re)connecte ou change de boîtier
+  }, [connected, boitier, mode]); // relancé si on (re)connecte, change de boîtier, ou change de mode
+
+  function lancerRecherche() {
+    if (!dateEstValide(anneeRecherche, moisRecherche, jourRecherche)) {
+      setErreurRecherche("Cette date n'existe pas (ou est dans le futur).");
+      setResultatRecherche(null);
+      return;
+    }
+    setErreurRecherche(null);
+    const resultat = genererHistoriqueSimule(boitier, anneeRecherche, moisRecherche, jourRecherche);
+    setResultatRecherche(resultat);
+    setMode("historique");
+  }
+
+  function revenirAuDirect() {
+    setMode("live");
+    setResultatRecherche(null);
+    setErreurRecherche(null);
+  }
+
+  // Source des mesures affichées dans les tuiles : le dernier point de
+  // l'historique simulé en mode "historique", sinon les données live.
+  const dataAffichee =
+    mode === "historique" && resultatRecherche
+      ? resultatRecherche.points[resultatRecherche.points.length - 1]
+      : data;
+
+  const historiqueAffiche =
+    mode === "historique" && resultatRecherche ? resultatRecherche.points : history;
 
   // Liste complète des métriques possibles, avant filtrage par le sélecteur
   // de température. Chaque entrée regroupe tout ce dont une tuile a besoin :
   // libellé, unité, valeur courante, plage nominale/bornes et couleur.
   const allMetrics = [
-    { key: "soc", label: "SOC", unit: "%", value: data.soc, ...LIMITS.soc },
-    { key: "tension", label: "Tension", unit: "V", value: data.tension, ...LIMITS.tension },
-    { key: "courant", label: "Courant", unit: "A", value: data.courant, ...LIMITS.courant },
-    { key: "temp1", label: "Temperature (groupe 1)", unit: "°C", value: data.temp1, ...LIMITS.temp1 },
-    { key: "temp2", label: "Temperature (groupe 2)", unit: "°C", value: data.temp2, ...LIMITS.temp2 },
+    { key: "soc", label: "SOC", unit: "%", value: dataAffichee.soc, ...LIMITS.soc },
+    { key: "tension", label: "Tension", unit: "V", value: dataAffichee.tension, ...LIMITS.tension },
+    { key: "courant", label: "Courant", unit: "A", value: dataAffichee.courant, ...LIMITS.courant },
+    { key: "temp1", label: "Temperature (groupe 1)", unit: "°C", value: dataAffichee.temp1, ...LIMITS.temp1 },
+    { key: "temp2", label: "Temperature (groupe 2)", unit: "°C", value: dataAffichee.temp2, ...LIMITS.temp2 },
   ];
 
   // Filtre les tuiles température affichées selon le sélecteur "Groupe 1 /
@@ -112,7 +237,7 @@ export default function App() {
 
   function exportToCSV() {
     const headers = ["Heure", ...metrics.map((m) => `${m.label} (${m.unit})`)];
-    const rows = history.map((point) => [
+    const rows = historiqueAffiche.map((point) => [
       point.time,
       ...metrics.map((m) => point[m.key].toFixed(1)),
     ]);
@@ -125,7 +250,9 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "historique_batterie.csv";
+    const suffixe =
+      mode === "historique" && resultatRecherche ? resultatRecherche.dateStr : "direct";
+    link.download = `historique_batterie_${suffixe}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -157,17 +284,72 @@ export default function App() {
         <button type="button" onClick={() => setConnected((c) => !c)}>
           {connected ? "simuler déconnexion" : "reconnecter"}
         </button>
-        {lastUpdate && (
+        {mode === "live" && lastUpdate && (
           <span className="horodatage">
             dernière mesure : {lastUpdate.toLocaleTimeString("fr-FR")}
           </span>
         )}
       </div>
 
-      {!connected && (
+      {/* Recherche de données historiques par jour / mois / année.
+          Les données renvoyées sont simulées (pas de vraie base de
+          données branchée pour l'instant), mais reproductibles : une
+          même date + un même boîtier redonnent toujours les mêmes
+          valeurs. */}
+      <div className="selecteur recherche-historique">
+        <label>
+          Jour{" "}
+          <select value={jourRecherche} onChange={(e) => setJourRecherche(Number(e.target.value))}>
+            {Array.from({ length: 31 }, (_, i) => i + 1).map((j) => (
+              <option key={j} value={j}>
+                {j}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Mois{" "}
+          <select value={moisRecherche} onChange={(e) => setMoisRecherche(Number(e.target.value))}>
+            {MOIS.map((nom, i) => (
+              <option key={nom} value={i + 1}>
+                {nom}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Année{" "}
+          <select value={anneeRecherche} onChange={(e) => setAnneeRecherche(Number(e.target.value))}>
+            {anneesDisponibles.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="button" onClick={lancerRecherche}>
+          Rechercher
+        </button>
+        {mode === "historique" && (
+          <button type="button" onClick={revenirAuDirect}>
+            Revenir au direct
+          </button>
+        )}
+      </div>
+
+      {erreurRecherche && <div className="erreur">{erreurRecherche}</div>}
+
+      {mode === "historique" && resultatRecherche && (
+        <div className="erreur" style={{ background: "#eef3fb", color: "#1d3a5f" }}>
+          Données simulées pour le {resultatRecherche.dateStr} ({boitier}) — aucune base de
+          données réelle n'est encore branchée.
+        </div>
+      )}
+
+      {mode === "live" && !connected && (
         <div className="erreur">Connexion au boîtier {boitier} interrompue.</div>
       )}
-      {connected && erreurReseau && (
+      {mode === "live" && connected && erreurReseau && (
         <div className="erreur">Erreur de lecture : {erreurReseau}</div>
       )}
 
@@ -191,7 +373,7 @@ export default function App() {
                 l'état ::after (toujours calculé après tous les enfants). */}
             <div style={{ width: "100%", height: 110, marginTop: 4 }}>
               <ResponsiveContainer>
-                <LineChart data={history} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <LineChart data={historiqueAffiche} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="time" tick={{ fontSize: 9 }} minTickGap={30} />
                   {/* domain fixé sur floor/ceil (bornes physiques) plutôt que sur
@@ -218,7 +400,7 @@ export default function App() {
       })}
 
       {/* Désactivé tant qu'il n'y a aucune mesure à exporter. */}
-      <button onClick={exportToCSV} disabled={history.length === 0}>
+      <button onClick={exportToCSV} disabled={historiqueAffiche.length === 0}>
         Exporter l'historique en CSV
       </button>
     </div>
