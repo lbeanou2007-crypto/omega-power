@@ -22,7 +22,7 @@ const LIMITS = {
   temp2: { min: 2, max: 45, floor: -10, ceil: 60, color: "#b5501a" },
 };
 
-const BOITIERS = ["boitier_V16", "boitier_BMS_V14", "boitier_V16+MAC"];
+const BOITIERS = ["V16", "BMS_V14", "V16_MAC", "V17"];
 const TEMP_MODES = ["Groupe 1", "Groupe 2", "Les deux"];
 const MOIS = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
