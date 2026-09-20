@@ -11,22 +11,27 @@
 // du certificat grâce à "secure: false").
 import api from "./services/api.js";
 
+// L'API du camarade ne gere qu'UN seul boitier physique : le V16. Ses mesures
+// n'ont pas de champ "nom" (pas de notion de boitier cote API), donc aucun
+// filtrage n'est possible ni necessaire : toutes les mesures recues sont
+// celles du V16. Le parametre "boitierNom" est conserve pour ne pas casser
+// l'appelant (App.jsx garde ses 4 boitiers), mais il est ignore : quel que
+// soit le boitier selectionne, on affiche les valeurs du V16.
+// A remettre en filtre (m.nom === boitierNom) le jour ou l'API redevient
+// multi-boitiers.
+// eslint-disable-next-line no-unused-vars
 export async function fetchMesure(boitierNom) {
   const toutesLesMesures = (await api.get("/batteries")).data;
 
-  // L'API renvoie un champ "nom" à plat sur chaque mesure (pas d'objet
-  // "boitier" imbriqué) : voir Batterie.java côté API.
-  const mesuresDuBoitier = toutesLesMesures.filter((m) => m.nom === boitierNom);
-
-  if (mesuresDuBoitier.length === 0) {
-    throw new Error(`Aucune mesure trouvée pour ${boitierNom}`);
+  if (toutesLesMesures.length === 0) {
+    throw new Error("Aucune mesure disponible (boîtier V16)");
   }
 
   // Tri par date de mesure pour être sûr de prendre la plus récente.
-  mesuresDuBoitier.sort(
+  const triees = [...toutesLesMesures].sort(
     (a, b) => new Date(a.dateMesure) - new Date(b.dateMesure)
   );
-  const derniere = mesuresDuBoitier[mesuresDuBoitier.length - 1];
+  const derniere = triees[triees.length - 1];
 
   // ⚠️ L'API n'a qu'un seul champ "temperature" (pas temp1/temp2).
   // On le duplique sur les deux pour ne pas casser l'affichage existant,
@@ -40,9 +45,7 @@ export async function fetchMesure(boitierNom) {
   };
 }
 
-// Récupère la liste des boîtiers connus, déduite des mesures existantes
-// (l'API n'expose pas de route dédiée /boitiers).
+// Seul le V16 est branche cote API pour l'instant.
 export async function fetchBoitiers() {
-  const toutesLesMesures = (await api.get("/batteries")).data;
-  return [...new Set(toutesLesMesures.map((m) => m.nom))];
+  return ["V16"];
 }
