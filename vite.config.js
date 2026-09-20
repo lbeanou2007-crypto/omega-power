@@ -7,9 +7,11 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
-      // 5174 et non 5173 : l'ancien projet garde 5173, on peut donc lancer
-      // les deux en meme temps et comparer les deux IHM cote a cote.
-      port: 5174,
+      // 8443 : meme port que l'API du camarade (server.port dans son
+      // application.properties). Pas de conflit tant que l'API tourne sur
+      // SA machine ; si elle tourne sur la meme machine que l'IHM, l'un des
+      // deux ne pourra pas demarrer (port deja utilise).
+      port: 8443,
       // Le front appelle "/api/..." et Vite redirige vers l'API du camarade,
       // lancee sur SA machine du reseau local (VITE_API_PROXY_TARGET dans
       // .env, ex: https://192.168.100.197:8443 - port 8443 = server.port
