@@ -14,12 +14,17 @@ import { fetchMesure } from "./db";
 // Plage nominale (min/max, utilisée pour l'état ok/crit et l'axe Y du graphique)
 // et bornes physiques absolues (floor/ceil, utilisées pour empêcher la simulation
 // de dériver vers des valeurs impossibles, ex: SOC > 100%).
+// Valeurs basees sur la fiche technique OMEGA EXPERT-S (ES48100A, 100Ah 51,2V).
 const LIMITS = {
   soc: { min: 20, max: 100, floor: 0, ceil: 100, color: "#0d7fbf" },
-  tension: { min: 44, max: 52, floor: 40, ceil: 56, color: "#2f8f4e" },
-  courant: { min: -20, max: 20, floor: -30, ceil: 30, color: "#a1408c" },
-  temp1: { min: 2, max: 45, floor: -10, ceil: 60, color: "#c76b1f" },
-  temp2: { min: 2, max: 45, floor: -10, ceil: 60, color: "#b5501a" },
+  // Tension nominale 51,2V. Coupure decharge 41,6V, charge max 57,6V (25°C).
+  tension: { min: 44, max: 56, floor: 41.6, ceil: 57.6, color: "#2f8f4e" },
+  // Courant de charge/decharge max du BMS integre : 100A (marge d'alerte a 90A).
+  courant: { min: -90, max: 90, floor: -100, ceil: 100, color: "#a1408c" },
+  // Charge : 0 a 55°C (plus restrictive), decharge : -20 a 55°C. On prend la
+  // plage de charge comme nominale et la plage de decharge comme bornes absolues.
+  temp1: { min: 0, max: 55, floor: -20, ceil: 55, color: "#c76b1f" },
+  temp2: { min: 0, max: 55, floor: -20, ceil: 55, color: "#b5501a" },
 };
 
 const BOITIERS = ["V16", "BMS_V14", "V16_MAC", "V17"];
