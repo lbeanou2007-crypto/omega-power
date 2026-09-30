@@ -1,6 +1,4 @@
-// Ce module fait un vrai appel réseau vers l'API du camarade (Spring Boot).
-// Signature inchangée par rapport à la version simulée : fetchMesure(boitier)
-// reste async et renvoie { soc, tension, courant, temp1, temp2 }.
+// Ce module fait les vrais appels réseau vers l'API du camarade (Spring Boot).
 //
 // On passe par l'instance axios partagée (services/api.js), dont la baseURL
 // est "/api" : Vite redirige ces requêtes vers l'API réelle (voir le "proxy"
@@ -9,74 +7,70 @@
 // à configurer côté API, et pas d'exception de certificat auto-signé à
 // accepter manuellement (le proxy, côté serveur Node, ignore la validation
 // du certificat grâce à "secure: false").
+//
+// Structure de l'API (depuis le 30/09/2026) :
+//   /api/boitiers                          -> liste des boîtiers { id, nom }
+//   /api/boitiers/{boitierId}/mesures      -> mesures d'un boîtier
+//   /api/boitiers/{boitierId}/mesures/{id} -> une mesure précise
+// Une mesure renvoyée par l'API :
+//   { id, boitierId, boitierNom, soc, tension, courant, temp, alarme, dateMesureNc }
 import api from "./services/api.js";
 
-// L'API du camarade ne gere qu'UN seul boitier physique : le V16. Ses mesures
-// n'ont pas de champ "nom" (pas de notion de boitier cote API), donc aucun
-// filtrage n'est possible ni necessaire : toutes les mesures recues sont
-// celles du V16. Le parametre "boitierNom" est conserve pour ne pas casser
-// l'appelant (App.jsx garde ses 4 boitiers), mais il est ignore : quel que
-// soit le boitier selectionne, on affiche les valeurs du V16.
-// A remettre en filtre (m.nom === boitierNom) le jour ou l'API redevient
-// multi-boitiers.
-// eslint-disable-next-line no-unused-vars
-export async function fetchMesure(boitierNom) {
-  const toutesLesMesures = (await api.get("/batteries")).data;
+// GET /api/boitiers -> [{ id, nom }, ...]
+export async function fetchBoitiers() {
+  return (await api.get("/boitiers")).data;
+}
 
-  if (toutesLesMesures.length === 0) {
-    throw new Error("Aucune mesure disponible (boîtier V16)");
+// Dernière mesure d'un boîtier, au format attendu par les tuiles de App.jsx :
+// { soc, tension, courant, temp1, temp2 }.
+export async function fetchMesure(boitierId) {
+  const dernieres = (
+    await api.get(`/boitiers/${boitierId}/mesures/dernieres`, { params: { limit: 1 } })
+  ).data;
+
+  if (dernieres.length === 0) {
+    throw new Error("Aucune mesure disponible pour ce boîtier");
   }
+  const derniere = dernieres[0];
 
-  // Tri par date de mesure pour être sûr de prendre la plus récente.
-  const triees = [...toutesLesMesures].sort(
-    (a, b) => new Date(a.dateMesure) - new Date(b.dateMesure)
-  );
-  const derniere = triees[triees.length - 1];
-
-  // ⚠️ L'API n'a qu'un seul champ "temperature" (pas temp1/temp2).
-  // On le duplique sur les deux pour ne pas casser l'affichage existant,
-  // à corriger si besoin plus tard (ex: retirer une des deux tuiles).
+  // ⚠️ L'API n'a qu'un seul champ "temp" (pas temp1/temp2).
+  // On le duplique sur les deux pour ne pas casser l'affichage existant.
   return {
-    soc: derniere.etatCharge,
+    soc: derniere.soc,
     tension: derniere.tension,
     courant: derniere.courant,
-    temp1: derniere.temperature,
-    temp2: derniere.temperature,
+    temp1: derniere.temp,
+    temp2: derniere.temp,
   };
 }
 
-// Seul le V16 est branche cote API pour l'instant.
-export async function fetchBoitiers() {
-  return ["V16"];
+// --- CRUD sur une mesure précise d'un boîtier ------------------------------
+// "valeurs" = { soc, tension, courant, temp, alarme } (saisies du formulaire).
+
+// Corps attendu par l'API pour POST/PUT : la mesure + le boîtier auquel elle
+// appartient ("boitier" est obligatoire, avec son nom).
+function corpsMesure(boitier, valeurs) {
+  return { boitier: { id: boitier.id, nom: boitier.nom }, ...valeurs };
 }
 
-// --- CRUD sur une mesure precise (endpoints /api/batteries/{id}) ----------
-// Ces fonctions renvoient la mesure brute de l'API :
-// { id, nom, etatCharge, tension, courant, temperature, alarme, dateMesure }.
-
-// Le champ "nom" est obligatoire cote API (@NotNull) mais n'est pas saisi
-// dans le formulaire : on envoie toujours "V16", seul boitier branche.
-const NOM_BOITIER = "V16";
-
-// GET /api/batteries/{id} -> une mesure, ou erreur 404 si l'id n'existe pas.
-export async function fetchMesureParId(id) {
-  return (await api.get(`/batteries/${id}`)).data;
+// GET /api/boitiers/{boitierId}/mesures/{id} -> une mesure.
+export async function fetchMesureParId(boitier, id) {
+  return (await api.get(`/boitiers/${boitier.id}/mesures/${id}`)).data;
 }
 
-// POST /api/batteries -> cree une mesure. L'API fixe elle-meme l'id et la
-// dateMesure, et renvoie la mesure creee (avec son nouvel id).
-export async function creerMesure(valeurs) {
-  return (await api.post("/batteries", { nom: NOM_BOITIER, ...valeurs })).data;
+// POST /api/boitiers/{boitierId}/mesures -> crée une mesure et la renvoie
+// (avec son nouvel id). L'API fixe elle-même la date de mesure.
+export async function creerMesure(boitier, valeurs) {
+  return (await api.post(`/boitiers/${boitier.id}/mesures`, corpsMesure(boitier, valeurs))).data;
 }
 
-// PUT /api/batteries/{id} -> remplace les valeurs de la mesure. L'API remet
-// dateMesure a l'heure actuelle. Erreur 404 si l'id n'existe pas.
-export async function modifierMesure(id, valeurs) {
-  return (await api.put(`/batteries/${id}`, { nom: NOM_BOITIER, ...valeurs })).data;
+// PUT /api/boitiers/{boitierId}/mesures/{id} -> remplace les valeurs de la mesure.
+export async function modifierMesure(boitier, id, valeurs) {
+  return (await api.put(`/boitiers/${boitier.id}/mesures/${id}`, corpsMesure(boitier, valeurs)))
+    .data;
 }
 
-// DELETE /api/batteries/{id} -> supprime la mesure (reponse 204, sans
-// contenu). Erreur 404 si l'id n'existe pas.
-export async function supprimerMesure(id) {
-  await api.delete(`/batteries/${id}`);
+// DELETE /api/boitiers/{boitierId}/mesures/{id} -> supprime la mesure.
+export async function supprimerMesure(boitier, id) {
+  await api.delete(`/boitiers/${boitier.id}/mesures/${id}`);
 }
