@@ -49,3 +49,16 @@ export async function fetchMesure(boitierNom) {
 export async function fetchBoitiers() {
   return ["V16"];
 }
+
+// --- CRUD sur une mesure precise (endpoints /api/batteries/{id}) ----------
+// Ces fonctions renvoient la mesure brute de l'API :
+// { id, nom, etatCharge, tension, courant, temperature, alarme, dateMesure }.
+
+// Le champ "nom" est obligatoire cote API (@NotNull) mais n'est pas saisi
+// dans le formulaire : on envoie toujours "V16", seul boitier branche.
+const NOM_BOITIER = "V16";
+
+// GET /api/batteries/{id} -> une mesure, ou erreur 404 si l'id n'existe pas.
+export async function fetchMesureParId(id) {
+  return (await api.get(`/batteries/${id}`)).data;
+}
