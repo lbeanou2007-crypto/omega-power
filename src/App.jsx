@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import "./App.css";
 import { fetchMesure } from "./db";
+import GestionMesures from "./GestionMesures";
 
 // Plage nominale (min/max, utilisée pour l'état ok/crit et l'axe Y du graphique)
 // et bornes physiques absolues (floor/ceil, utilisées pour empêcher la simulation
@@ -408,6 +409,9 @@ export default function App() {
       <button onClick={exportToCSV} disabled={historiqueAffiche.length === 0}>
         Exporter l'historique en CSV
       </button>
+
+      {/* CRUD sur les mesures de l'API (GET par id, POST, PUT, DELETE). */}
+      <GestionMesures />
     </div>
   );
 }
