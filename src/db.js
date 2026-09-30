@@ -74,3 +74,9 @@ export async function creerMesure(valeurs) {
 export async function modifierMesure(id, valeurs) {
   return (await api.put(`/batteries/${id}`, { nom: NOM_BOITIER, ...valeurs })).data;
 }
+
+// DELETE /api/batteries/{id} -> supprime la mesure (reponse 204, sans
+// contenu). Erreur 404 si l'id n'existe pas.
+export async function supprimerMesure(id) {
+  await api.delete(`/batteries/${id}`);
+}
