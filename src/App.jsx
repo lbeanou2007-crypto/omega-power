@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import "./App.css";
-import { fetchMesure } from "./db";
+import { fetchMesure, fetchBoitiers } from "./db";
 import GestionMesures from "./GestionMesures";
 
 // Plage nominale (min/max, utilisée pour l'état ok/crit et l'axe Y du graphique)
@@ -28,7 +28,6 @@ const LIMITS = {
   temp2: { min: 0, max: 55, floor: -20, ceil: 55, color: "#b5501a" },
 };
 
-const BOITIERS = ["V16", "BMS_V14", "V16_MAC", "V17"];
 const TEMP_MODES = ["Groupe 1", "Groupe 2", "Les deux"];
 const MOIS = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -117,7 +116,12 @@ function dateEstValide(annee, mois, jour) {
 }
 
 export default function App() {
-  const [boitier, setBoitier] = useState(BOITIERS[0]);
+  // Boîtiers fournis par l'API ([{ id, nom }]) et id du boîtier sélectionné.
+  const [boitiers, setBoitiers] = useState([]);
+  const [boitierId, setBoitierId] = useState(null);
+  const boitierCourant = boitiers.find((b) => b.id === boitierId) || null;
+  // Nom du boîtier sélectionné (affichage, graine de l'historique simulé).
+  const boitier = boitierCourant ? boitierCourant.nom : "";
   const [tempMode, setTempMode] = useState("Les deux");
   const [connected, setConnected] = useState(true);
 
@@ -155,12 +159,33 @@ export default function App() {
     anneesDisponibles.push(a);
   }
 
+  // Chargement de la liste des boîtiers au démarrage. Triés par id pour que
+  // le premier boîtier créé côté API (V16) soit sélectionné par défaut.
+  useEffect(() => {
+    let annule = false;
+    fetchBoitiers()
+      .then((liste) => {
+        if (annule) return;
+        const tries = [...liste].sort((a, b) => a.id - b.id);
+        setBoitiers(tries);
+        if (tries.length > 0) setBoitierId(tries[0].id);
+      })
+      .catch((err) => {
+        if (!annule) setErreurReseau(`liste des boîtiers : ${err.message}`);
+      });
+    return () => {
+      annule = true;
+    };
+  }, []);
+
   useEffect(() => {
     // En mode historique on n'interroge pas le boîtier en direct.
     if (mode !== "live") return undefined;
     // Si on simule une déconnexion, on arrête complètement le sondage
     // (pas de nouvel appel, pas de mise à jour de l'historique).
     if (!connected) return undefined;
+    // Rien à sonder tant que la liste des boîtiers n'est pas chargée.
+    if (boitierId === null) return undefined;
 
     // "Annulé" évite d'appliquer le résultat d'un appel encore en vol après
     // que le composant ait été démonté ou que boitier/connected aient changé.
@@ -168,7 +193,7 @@ export default function App() {
 
     async function sonder() {
       try {
-        const mesure = await fetchMesure(boitier);
+        const mesure = await fetchMesure(boitierId);
         if (annule) return;
 
         const now = new Date();
@@ -192,7 +217,7 @@ export default function App() {
       annule = true;
       clearInterval(id);
     };
-  }, [connected, boitier, mode]); // relancé si on (re)connecte, change de boîtier, ou change de mode
+  }, [connected, boitierId, mode]); // relancé si on (re)connecte, change de boîtier, ou change de mode
 
   function lancerRecherche() {
     if (!dateEstValide(anneeRecherche, moisRecherche, jourRecherche)) {
@@ -268,10 +293,10 @@ export default function App() {
       <div className="selecteur">
         <label>
           Boîtier{" "}
-          <select value={boitier} onChange={(e) => setBoitier(e.target.value)}>
-            {BOITIERS.map((b) => (
-              <option key={b} value={b}>
-                {b}
+          <select value={boitierId ?? ""} onChange={(e) => setBoitierId(Number(e.target.value))}>
+            {boitiers.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.nom}
               </option>
             ))}
           </select>
@@ -411,7 +436,7 @@ export default function App() {
       </button>
 
       {/* CRUD sur les mesures de l'API (GET par id, POST, PUT, DELETE). */}
-      <GestionMesures />
+      <GestionMesures boitier={boitierCourant} />
     </div>
   );
 }
