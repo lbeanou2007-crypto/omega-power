@@ -62,3 +62,9 @@ const NOM_BOITIER = "V16";
 export async function fetchMesureParId(id) {
   return (await api.get(`/batteries/${id}`)).data;
 }
+
+// POST /api/batteries -> cree une mesure. L'API fixe elle-meme l'id et la
+// dateMesure, et renvoie la mesure creee (avec son nouvel id).
+export async function creerMesure(valeurs) {
+  return (await api.post("/batteries", { nom: NOM_BOITIER, ...valeurs })).data;
+}
