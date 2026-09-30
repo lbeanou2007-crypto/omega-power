@@ -137,3 +137,28 @@
   background: #f4433620;
   border-left: 4px solid #f44336;
 }
+/* --- Gestion des mesures (CRUD) -------------------------------------- */
+.gestion-mesures {
+  margin-top: 24px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+}
+
+.gestion-mesures h2 {
+  margin: 0 0 16px;
+  font-size: 1.2rem;
+}
+
+.mesure-chargee {
+  margin-bottom: 20px;
+  padding: 10px;
+  background: #eef3fb;
+  color: #1d3a5f;
+}
+
+.erreur.succes {
+  background: #0ca30c20;
+  border-left-color: var(--etat-ok);
+}
