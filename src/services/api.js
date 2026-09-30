@@ -22,10 +22,14 @@ api.interceptors.response.use(
     } else if (error.code === 'ECONNABORTED') {
       message = "Le serveur met trop de temps a repondre.";
     } else {
-      message = "Impossible de joindre l'API Java (port 9443, HTTPS). Le backend est-il lance ?";
+      message = "Impossible de joindre l'API Java (port 8443, HTTPS). Le backend est-il lance ?";
     }
 
-    return Promise.reject(new Error(message));
+    // On garde le code HTTP (404, 400...) pour que l'appelant puisse
+    // afficher un message precis (ex: "id introuvable" sur un 404).
+    const erreur = new Error(message);
+    erreur.status = error.response ? error.response.status : null;
+    return Promise.reject(erreur);
   }
 );
 
