@@ -68,3 +68,9 @@ export async function fetchMesureParId(id) {
 export async function creerMesure(valeurs) {
   return (await api.post("/batteries", { nom: NOM_BOITIER, ...valeurs })).data;
 }
+
+// PUT /api/batteries/{id} -> remplace les valeurs de la mesure. L'API remet
+// dateMesure a l'heure actuelle. Erreur 404 si l'id n'existe pas.
+export async function modifierMesure(id, valeurs) {
+  return (await api.put(`/batteries/${id}`, { nom: NOM_BOITIER, ...valeurs })).data;
+}
