@@ -1,76 +1,147 @@
-# Ludovic Beanou - Projet
+# Omega Power - Supervision des boîtiers batteries
 
-Base React (Vite + axios) construite sur la meme organisation que le projet `front/react`
-de l'archive `front (1).zip`, avec quelques ajouts pour partir sur des bonnes bases.
+Projet BTS CIEL option IR - Ludovic Beanou.
 
-## Demarrage
+Interface web (IHM) de supervision des boîtiers batteries **OMEGA EXPERT-S ES48100A**
+(LiFePO4, 51,2 V, 100 Ah). Elle affiche en direct les mesures de chaque boîtier
+(état de charge, tension, courant, température), signale les valeurs hors plage
+et permet de gérer les mesures enregistrées en base.
+
+Les données viennent d'une **API REST Spring Boot** développée par un camarade
+de l'équipe projet. Ce dépôt contient uniquement la partie IHM (front React).
+
+## Fonctionnalités
+
+| Fonction | Détail |
+| --- | --- |
+| Liste des boîtiers | Chargée depuis l'API (`GET /api/boitiers`), choix dans un menu déroulant |
+| Mesures en direct | Dernière mesure du boîtier sélectionné, rafraîchie toutes les 2,5 s |
+| Alertes | Chaque valeur est comparée aux plages de la fiche technique (état OK / critique) |
+| Graphiques | Courbe des 20 derniers points pour chaque grandeur (Recharts) |
+| Gestion des mesures | Rechercher, créer, modifier et supprimer une mesure (CRUD complet) |
+| Recherche historique | Recherche par jour / mois / année *(données simulées pour l'instant)* |
+| Export CSV | Export de l'historique affiché |
+| Test de coupure | Bouton « simuler déconnexion » pour vérifier le comportement sans réseau |
+
+## Architecture
+
+```
+ Navigateur  ──HTTP──▶  Serveur Vite (IHM)  ──HTTPS──▶  API Spring Boot  ──▶  Base de données
+ (PC client)            port 8443                       192.168.100.197:9443
+                        proxy /api/...                  (machine du camarade)
+```
+
+Schéma détaillé : [`docs/flux_proxy_vite_api.png`](docs/flux_proxy_vite_api.png)
+
+Le navigateur appelle toujours `/api/...` sur le serveur Vite. Vite **redirige**
+ces requêtes vers l'API (voir `proxy` dans `vite.config.js`). Ce choix permet :
+
+- de ne parler qu'à une seule origine : pas de problème de **CORS** ;
+- de gérer le **certificat auto-signé** de l'API côté serveur, sans que
+  l'utilisateur ait à accepter une exception de sécurité dans son navigateur ;
+- de changer l'adresse de l'API dans un seul fichier (`.env`) sans toucher au code.
+
+## Environnement technique
+
+| Élément | Choix | Pourquoi |
+| --- | --- | --- |
+| Langage | JavaScript (JSX) | Langage du web, utilisé aussi pour le front de l'équipe |
+| Framework | React 18 | Interface découpée en composants réutilisables |
+| Outil de build | Vite 5 | Démarrage rapide, proxy intégré vers l'API |
+| Requêtes HTTP | axios | Gestion centralisée des erreurs (intercepteur) |
+| Graphiques | Recharts | Courbes React simples à intégrer |
+| Versionnage | Git + GitHub | Historique des modifications, travail en équipe |
+
+## Installation et lancement
+
+Prérequis : Node.js 18 ou plus, et l'API du camarade joignable sur le réseau local.
 
 ```bash
 npm install
+cp .env.example .env     # puis adapter l'adresse de l'API si besoin
 npm run dev
 ```
 
-Le site est disponible sur http://localhost:5173
+L'IHM est ensuite disponible sur **http://localhost:8443**.
 
-Autres commandes :
+| Commande | Effet |
+| --- | --- |
+| `npm run dev` | Serveur de développement (rechargement à chaud) |
+| `npm run build` | Version de production dans `dist/` |
+| `npm run preview` | Teste le résultat du build en local |
 
-| Commande          | Effet                                          |
-| ----------------- | ---------------------------------------------- |
-| `npm run dev`     | Serveur de developpement (rechargement a chaud) |
-| `npm run build`   | Version de production dans `dist/`             |
-| `npm run preview` | Teste le resultat du build en local            |
+### Configuration (`.env`)
+
+| Variable | Rôle | Valeur par défaut |
+| --- | --- | --- |
+| `VITE_API_URL` | Préfixe des appels de l'IHM | `/api` (passe par le proxy) |
+| `VITE_API_PROXY_TARGET` | Adresse réelle de l'API | `https://192.168.100.197:9443` |
+
+## Routes de l'API utilisées
+
+| Méthode | Route | Rôle |
+| --- | --- | --- |
+| GET | `/api/boitiers` | Liste des boîtiers `{ id, nom }` |
+| GET | `/api/boitiers/{id}/mesures/dernieres?limit=1` | Dernière mesure d'un boîtier |
+| GET | `/api/boitiers/{id}/mesures/{mesureId}` | Une mesure précise |
+| POST | `/api/boitiers/{id}/mesures` | Créer une mesure |
+| PUT | `/api/boitiers/{id}/mesures/{mesureId}` | Modifier une mesure |
+| DELETE | `/api/boitiers/{id}/mesures/{mesureId}` | Supprimer une mesure |
+
+Format d'une mesure :
+`{ id, boitierId, boitierNom, soc, tension, courant, temp, alarme, dateMesureNc }`
+
+## Plages de fonctionnement (fiche technique ES48100A)
+
+Définies dans `LIMITS` (`src/App.jsx`). En dehors de la plage nominale, la valeur
+passe en état critique.
+
+| Grandeur | Plage nominale | Bornes physiques | Source |
+| --- | --- | --- | --- |
+| État de charge (SOC) | 20 à 100 % | 0 à 100 % | Seuil bas d'alerte à 20 % |
+| Tension | 44 à 56 V | 41,6 à 57,6 V | Coupure décharge 41,6 V, charge max 57,6 V |
+| Courant | -90 à 90 A | -100 à 100 A | Courant max du BMS : 100 A |
+| Température | 0 à 55 °C | -20 à 55 °C | Charge 0-55 °C, décharge -20-55 °C |
 
 ## Organisation des fichiers
 
 ```
-Ludovic Beanou Projet/
-├── index.html              Point d'entree HTML
-├── package.json            Dependances et scripts
-├── vite.config.js          Config Vite + proxy vers le backend Java
-├── .env.example            Modele de configuration (a copier en .env)
+├── index.html               Point d'entrée HTML
+├── vite.config.js           Port de l'IHM + proxy vers l'API
+├── .env.example             Modèle de configuration (à copier en .env)
+├── docs/                    Schémas et documentation
 └── src/
-    ├── main.jsx            Montage de React dans la page
-    ├── App.jsx             Assemblage des composants
-    ├── styles/
-    │   └── global.css      Variables de couleurs + styles de base
-    ├── services/
-    │   ├── api.js          Instance axios + gestion des erreurs
-    │   └── statutService.js Appels API pour la ressource "statuts"
-    ├── hooks/
-    │   └── useApi.js       Hook chargement / donnees / erreur
-    └── components/
-        ├── Layout.jsx      Cadre visuel commun
-        ├── StatutList.jsx  Liste + detail d'un statut
-        └── ui/             Briques reutilisables
-            ├── Button.jsx
-            ├── Loader.jsx
-            └── ErrorMessage.jsx
+    ├── main.jsx             Montage de React dans la page
+    ├── App.jsx              Tableau de bord : tuiles, graphiques, historique, export CSV
+    ├── GestionMesures.jsx   Formulaire CRUD des mesures du boîtier sélectionné
+    ├── db.js                Tous les appels à l'API des boîtiers et des mesures
+    ├── services/api.js      Instance axios + traduction des erreurs réseau
+    └── styles/global.css    Couleurs et styles de base
 ```
 
-Regle simple : un composant = un fichier `.jsx` + son `.css` a cote.
+Les fichiers `components/`, `hooks/useApi.js`, `services/statutService.js` et
+`services/boitierService.js` viennent du modèle de départ et ne sont plus utilisés
+par l'IHM actuelle.
 
-## Lien avec le backend Java
+## Sécurité et protection des données
 
-Le front appelle `/api/...`, et Vite redirige ces requetes vers
-`http://localhost:8080` (voir le `proxy` dans `vite.config.js`).
-Cela evite les erreurs CORS pendant le developpement.
+- **HTTPS** entre le serveur de l'IHM et l'API.
+- **Aucun secret dans le code** : l'adresse de l'API est dans `.env`, qui est exclu
+  de Git (`.gitignore`) ; seul le modèle `.env.example` est versionné. Les fichiers
+  de mots de passe et de clés (`*.p12`, `*.key`, `*.pem`) sont aussi exclus.
+- **Contrôle des saisies** avant envoi à l'API (champs numériques, SOC entier
+  entre 0 et 100) et **confirmation** avant toute suppression.
+- **Erreurs gérées** : API injoignable, délai dépassé (10 s), mesure introuvable
+  (404) ou valeurs refusées (400) affichent un message clair au lieu de bloquer l'IHM.
+- Les données traitées sont des mesures techniques : **aucune donnée personnelle**.
 
-Le backend Spring Boot doit donc etre lance sur le port 8080 et exposer :
+## Limites connues et évolutions prévues
 
-- `GET /api/statuts` - liste des statuts
-- `GET /api/statuts/{id}` - un statut
-
-Sans backend, la page affiche un message d'erreur avec un bouton *Reessayer* :
-c'est normal.
-
-## Ajouter une nouvelle ressource (exemple : les utilisateurs)
-
-1. Creer `src/services/utilisateurService.js` sur le modele de `statutService.js`.
-2. Creer `src/components/UtilisateurList.jsx` + `UtilisateurList.css`.
-3. Recuperer les donnees avec le hook :
-
-```jsx
-const { data, loading, error, refetch } = useApi(getAllUtilisateurs);
-```
-
-4. Afficher le composant depuis `App.jsx`.
+- L'API ne fournit qu'une seule température (`temp`) : elle est affichée pour les
+  deux groupes de cellules en attendant `tempGroupe1` / `tempGroupe2`.
+- La recherche historique utilise des données simulées : à brancher sur l'API
+  dès qu'une route de recherche par date existe.
+- Le proxy accepte le certificat auto-signé de l'API (`secure: false`) : à remplacer
+  par un certificat signé par une autorité reconnue en production.
+- Pas encore d'authentification des utilisateurs sur l'IHM.
+- Supprimer les fichiers du modèle de départ qui ne servent plus.
