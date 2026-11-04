@@ -7,25 +7,24 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
-      // 8443 : meme port que l'API du camarade (server.port dans son
-      // application.properties). Pas de conflit tant que l'API tourne sur
-      // SA machine ; si elle tourne sur la meme machine que l'IHM, l'un des
-      // deux ne pourra pas demarrer (port deja utilise).
+      // Port de l'IHM (ouvrir http://localhost:8443).
       port: 8443,
-      // Le front appelle "/api/..." et Vite redirige vers l'API du camarade,
-      // lancee sur SA machine du reseau local (VITE_API_PROXY_TARGET dans
-      // .env, ex: https://192.168.100.197:8443 - port 8443 = server.port
-      // dans application.properties de l'API, pas 9443).
+      // Le front appelle "/api/..." et Vite redirige vers l'API hebergee sur
+      // Render (VITE_API_PROXY_TARGET dans .env).
       // Avantage : le navigateur ne parle qu'a Vite (meme origine), donc
-      // aucun probleme de CORS ni de certificat auto-signe a accepter.
+      // aucun probleme de CORS.
       proxy: {
         '/api': {
-          target: env.VITE_API_PROXY_TARGET || 'https://192.168.100.197:8443',
+          target: env.VITE_API_PROXY_TARGET || 'https://batterie-connectee-api.onrender.com',
           changeOrigin: true,
-          // Certificat auto-signe (keystore.p12) cote API : Vite doit
-          // l'accepter sans le valider, sinon le proxy renvoie une erreur
-          // "self signed certificate".
-          secure: false,
+          // Render presente un certificat reconnu : on le fait valider.
+          secure: true,
+          // Le navigateur ajoute "Origin: http://localhost:8443" sur les POST
+          // et DELETE, et l'API repond 403 a cette origine. La requete vient
+          // ici du serveur Vite : on retire donc cet en-tete avant l'envoi.
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => proxyReq.removeHeader('origin'))
+          },
         },
       },
     },

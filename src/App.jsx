@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   LineChart,
   Line,
@@ -9,12 +9,11 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import "./App.css";
-import { fetchMesure } from "./db";
+import { fetchBoitiers, fetchDernieresMesures, fetchMesuresDuJour } from "./db";
 import GestionMesures from "./GestionMesures";
 
-// Plage nominale (min/max, utilisée pour l'état ok/crit et l'axe Y du graphique)
-// et bornes physiques absolues (floor/ceil, utilisées pour empêcher la simulation
-// de dériver vers des valeurs impossibles, ex: SOC > 100%).
+// Plage nominale (min/max, utilisée pour l'état ok/crit) et bornes physiques
+// absolues (floor/ceil, utilisées pour l'axe Y du graphique).
 // Valeurs basees sur la fiche technique OMEGA EXPERT-S (ES48100A, 100Ah 51,2V).
 const LIMITS = {
   soc: { min: 20, max: 100, floor: 0, ceil: 100, color: "#0d7fbf" },
@@ -28,7 +27,6 @@ const LIMITS = {
   temp2: { min: 0, max: 55, floor: -20, ceil: 55, color: "#b5501a" },
 };
 
-const BOITIERS = ["V16", "BMS_V14", "V16_MAC", "V17"];
 const TEMP_MODES = ["Groupe 1", "Groupe 2", "Les deux"];
 const MOIS = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -38,72 +36,10 @@ const MOIS = [
 // Détermine si une valeur est dans sa plage nominale (min/max) ou en alerte.
 // Utilisé à la fois pour la classe CSS de la tuile (ok/crit) et pour le badge
 // généré automatiquement par App.css (::after sur .metric-card).
+// Sans valeur (aucune mesure reçue), pas de classe, donc pas de badge.
 function statusOf(value, min, max) {
+  if (value === null) return "";
   return value < min || value > max ? "crit" : "ok";
-}
-
-// --- Génération de données historiques SIMULÉES ---------------------------
-// Pas de vraie base de données pour l'instant : on génère une journée de
-// mesures plausibles pour un (boîtier, jour) donné. Le générateur est
-// "seedé" à partir de la date + du boîtier, donc une même recherche renvoie
-// toujours les mêmes valeurs (utile pour tester l'IHM de façon reproductible).
-
-// Petit générateur pseudo-aléatoire déterministe (mulberry32).
-function creerRng(seed) {
-  let a = seed >>> 0;
-  return function () {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// Transforme une chaîne (ex: "2024-03-14|boitier_V16") en entier pour servir
-// de graine au générateur pseudo-aléatoire.
-function hashSeed(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-// Génère un point de mesure plausible pour un instant donné de la journée
-// (heureDecimal ∈ [0, 24[), avec une légère variation sinusoïdale + du bruit.
-function genererPoint(rng, heureDecimal) {
-  const cycle = Math.sin((heureDecimal / 24) * Math.PI * 2);
-  const soc = clamp(60 + cycle * 25 + (rng() - 0.5) * 8, LIMITS.soc.floor, LIMITS.soc.ceil);
-  const tension = clamp(48 + cycle * 2.5 + (rng() - 0.5) * 1.2, LIMITS.tension.floor, LIMITS.tension.ceil);
-  const courant = clamp(cycle * 12 + (rng() - 0.5) * 6, LIMITS.courant.floor, LIMITS.courant.ceil);
-  const temp1 = clamp(24 + cycle * 8 + (rng() - 0.5) * 3, LIMITS.temp1.floor, LIMITS.temp1.ceil);
-  const temp2 = clamp(23 + cycle * 8 + (rng() - 0.5) * 3, LIMITS.temp2.floor, LIMITS.temp2.ceil);
-  return { soc, tension, courant, temp1, temp2 };
-}
-
-function clamp(v, min, max) {
-  return Math.min(max, Math.max(min, v));
-}
-
-// Génère une journée complète (un point toutes les 30 minutes) pour le
-// boîtier et la date donnés.
-function genererHistoriqueSimule(boitier, annee, mois, jour) {
-  const dateStr = `${annee}-${String(mois).padStart(2, "0")}-${String(jour).padStart(2, "0")}`;
-  const rng = creerRng(hashSeed(`${dateStr}|${boitier}`));
-  const points = [];
-  for (let demiHeure = 0; demiHeure < 48; demiHeure++) {
-    const heureDecimal = demiHeure / 2;
-    const h = Math.floor(heureDecimal);
-    const m = heureDecimal % 1 === 0 ? "00" : "30";
-    const mesure = genererPoint(rng, heureDecimal);
-    points.push({
-      time: `${String(h).padStart(2, "0")}:${m}`,
-      ...mesure,
-    });
-  }
-  return { dateStr, points };
 }
 
 // Vérifie qu'un triplet jour/mois/année correspond à une vraie date
@@ -117,28 +53,24 @@ function dateEstValide(annee, mois, jour) {
 }
 
 export default function App() {
-  const [boitier, setBoitier] = useState(BOITIERS[0]);
+  // Boîtiers fournis par l'API ([{ id, nom }]) et id du boîtier sélectionné.
+  const [boitiers, setBoitiers] = useState([]);
+  const [boitierId, setBoitierId] = useState(null);
+  const boitierCourant = boitiers.find((b) => b.id === boitierId) || null;
+  // Nom du boîtier sélectionné (affichage).
+  const boitier = boitierCourant ? boitierCourant.nom : "";
   const [tempMode, setTempMode] = useState("Les deux");
   const [connected, setConnected] = useState(true);
 
   // "live" : mesures en direct (comportement d'origine).
-  // "historique" : résultat d'une recherche par date, données simulées.
+  // "historique" : résultat d'une recherche par date.
   const [mode, setMode] = useState("live");
 
-  // Valeurs "instantanées" affichées dans les tuiles (mode live).
-  const [data, setData] = useState({
-    soc: 110,
-    tension: 48.2,
-    courant: -6.4,
-    temp1: 28.5,
-    temp2: 26.1,
-  });
-
-  // Historique glissant (20 derniers points) utilisé par les mini-graphiques
-  // et par l'export CSV en mode live.
+  // 20 dernières mesures enregistrées du boîtier, de la plus ancienne à la plus
+  // récente (tuiles, mini-graphiques et export CSV en mode live). Vide tant
+  // qu'aucune mesure n'a été reçue.
   const [history, setHistory] = useState([]);
-  const [lastUpdate, setLastUpdate] = useState(null);
-  // Message d'erreur du dernier appel "BDD" en échec (distinct de la
+  // Message d'erreur du dernier appel à l'API en échec (distinct de la
   // déconnexion manuelle via le bouton).
   const [erreurReseau, setErreurReseau] = useState(null);
 
@@ -149,11 +81,34 @@ export default function App() {
   const [anneeRecherche, setAnneeRecherche] = useState(maintenant.getFullYear());
   const [resultatRecherche, setResultatRecherche] = useState(null); // { dateStr, points }
   const [erreurRecherche, setErreurRecherche] = useState(null);
+  const [rechercheEnCours, setRechercheEnCours] = useState(false);
+  // Numéro de la dernière recherche : permet d'ignorer la réponse d'une recherche
+  // devenue obsolète (changement de boîtier ou retour au direct entre-temps).
+  const derniereRecherche = useRef(0);
 
   const anneesDisponibles = [];
   for (let a = maintenant.getFullYear(); a >= maintenant.getFullYear() - 5; a--) {
     anneesDisponibles.push(a);
   }
+
+  // Chargement de la liste des boîtiers au démarrage. Triés par id pour que
+  // le premier boîtier créé côté API (V16) soit sélectionné par défaut.
+  useEffect(() => {
+    let annule = false;
+    fetchBoitiers()
+      .then((liste) => {
+        if (annule) return;
+        const tries = [...liste].sort((a, b) => a.id - b.id);
+        setBoitiers(tries);
+        if (tries.length > 0) setBoitierId(tries[0].id);
+      })
+      .catch((err) => {
+        if (!annule) setErreurReseau(`liste des boîtiers : ${err.message}`);
+      });
+    return () => {
+      annule = true;
+    };
+  }, []);
 
   useEffect(() => {
     // En mode historique on n'interroge pas le boîtier en direct.
@@ -161,6 +116,8 @@ export default function App() {
     // Si on simule une déconnexion, on arrête complètement le sondage
     // (pas de nouvel appel, pas de mise à jour de l'historique).
     if (!connected) return undefined;
+    // Rien à sonder tant que la liste des boîtiers n'est pas chargée.
+    if (boitierId === null) return undefined;
 
     // "Annulé" évite d'appliquer le résultat d'un appel encore en vol après
     // que le composant ait été démonté ou que boitier/connected aient changé.
@@ -168,18 +125,11 @@ export default function App() {
 
     async function sonder() {
       try {
-        const mesure = await fetchMesure(boitier);
+        const points = await fetchDernieresMesures(boitierId);
         if (annule) return;
 
-        const now = new Date();
-        const point = { time: now.toLocaleTimeString("fr-FR"), ...mesure };
-
-        setData(mesure);
-        // On ne garde que les 20 derniers points pour éviter que l'historique
-        // (et donc les graphiques/le CSV) ne grossisse indéfiniment.
-        setHistory((prevHistory) => [...prevHistory, point].slice(-20));
-        setLastUpdate(now);
-        setErreurReseau(null);
+        setHistory(points);
+        setErreurReseau(points.length === 0 ? "aucune mesure disponible pour ce boîtier." : null);
       } catch (err) {
         if (!annule) setErreurReseau(err.message);
       }
@@ -192,45 +142,66 @@ export default function App() {
       annule = true;
       clearInterval(id);
     };
-  }, [connected, boitier, mode]); // relancé si on (re)connecte, change de boîtier, ou change de mode
+  }, [connected, boitierId, mode]); // relancé si on (re)connecte, change de boîtier, ou change de mode
 
-  function lancerRecherche() {
+  async function lancerRecherche() {
     if (!dateEstValide(anneeRecherche, moisRecherche, jourRecherche)) {
       setErreurRecherche("Cette date n'existe pas (ou est dans le futur).");
       setResultatRecherche(null);
       return;
     }
+    const numero = ++derniereRecherche.current;
+    const dateStr = `${anneeRecherche}-${String(moisRecherche).padStart(2, "0")}-${String(jourRecherche).padStart(2, "0")}`;
     setErreurRecherche(null);
-    const resultat = genererHistoriqueSimule(boitier, anneeRecherche, moisRecherche, jourRecherche);
-    setResultatRecherche(resultat);
-    setMode("historique");
+    setRechercheEnCours(true);
+    try {
+      const points = await fetchMesuresDuJour(boitierId, dateStr);
+      if (numero !== derniereRecherche.current) return;
+      setResultatRecherche({ dateStr, points });
+      setMode("historique");
+    } catch (err) {
+      if (numero === derniereRecherche.current) {
+        setErreurRecherche(`Recherche impossible : ${err.message}`);
+      }
+    } finally {
+      if (numero === derniereRecherche.current) setRechercheEnCours(false);
+    }
   }
 
   function revenirAuDirect() {
+    derniereRecherche.current++;
+    setRechercheEnCours(false);
     setMode("live");
     setResultatRecherche(null);
     setErreurRecherche(null);
   }
 
-  // Source des mesures affichées dans les tuiles : le dernier point de
-  // l'historique simulé en mode "historique", sinon les données live.
-  const dataAffichee =
-    mode === "historique" && resultatRecherche
-      ? resultatRecherche.points[resultatRecherche.points.length - 1]
-      : data;
+  // Les mesures affichées appartiennent à un seul boîtier : on repart de zéro
+  // quand on en change, pour ne jamais afficher celles du précédent.
+  function changerBoitier(id) {
+    revenirAuDirect();
+    setHistory([]);
+    setErreurReseau(null);
+    setBoitierId(id);
+  }
 
   const historiqueAffiche =
     mode === "historique" && resultatRecherche ? resultatRecherche.points : history;
+
+  // Mesure affichée dans les tuiles : la plus récente de la liste, ou null si
+  // la liste est vide (les tuiles affichent alors "—").
+  const dataAffichee = historiqueAffiche[historiqueAffiche.length - 1] ?? null;
+  const valeur = (cle) => (dataAffichee ? dataAffichee[cle] : null);
 
   // Liste complète des métriques possibles, avant filtrage par le sélecteur
   // de température. Chaque entrée regroupe tout ce dont une tuile a besoin :
   // libellé, unité, valeur courante, plage nominale/bornes et couleur.
   const allMetrics = [
-    { key: "soc", label: "SOC", unit: "%", value: dataAffichee.soc, ...LIMITS.soc },
-    { key: "tension", label: "Tension", unit: "V", value: dataAffichee.tension, ...LIMITS.tension },
-    { key: "courant", label: "Courant", unit: "A", value: dataAffichee.courant, ...LIMITS.courant },
-    { key: "temp1", label: "Temperature (groupe 1)", unit: "°C", value: dataAffichee.temp1, ...LIMITS.temp1 },
-    { key: "temp2", label: "Temperature (groupe 2)", unit: "°C", value: dataAffichee.temp2, ...LIMITS.temp2 },
+    { key: "soc", label: "SOC", unit: "%", value: valeur("soc"), ...LIMITS.soc },
+    { key: "tension", label: "Tension", unit: "V", value: valeur("tension"), ...LIMITS.tension },
+    { key: "courant", label: "Courant", unit: "A", value: valeur("courant"), ...LIMITS.courant },
+    { key: "temp1", label: "Temperature (groupe 1)", unit: "°C", value: valeur("temp1"), ...LIMITS.temp1 },
+    { key: "temp2", label: "Temperature (groupe 2)", unit: "°C", value: valeur("temp2"), ...LIMITS.temp2 },
   ];
 
   // Filtre les tuiles température affichées selon le sélecteur "Groupe 1 /
@@ -268,10 +239,10 @@ export default function App() {
       <div className="selecteur">
         <label>
           Boîtier{" "}
-          <select value={boitier} onChange={(e) => setBoitier(e.target.value)}>
-            {BOITIERS.map((b) => (
-              <option key={b} value={b}>
-                {b}
+          <select value={boitierId ?? ""} onChange={(e) => changerBoitier(Number(e.target.value))}>
+            {boitiers.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.nom}
               </option>
             ))}
           </select>
@@ -290,18 +261,12 @@ export default function App() {
         <button type="button" onClick={() => setConnected((c) => !c)}>
           {connected ? "simuler déconnexion" : "reconnecter"}
         </button>
-        {mode === "live" && lastUpdate && (
-          <span className="horodatage">
-            dernière mesure : {lastUpdate.toLocaleTimeString("fr-FR")}
-          </span>
+        {mode === "live" && dataAffichee && (
+          <span className="horodatage">dernière mesure : {dataAffichee.time}</span>
         )}
       </div>
 
-      {/* Recherche de données historiques par jour / mois / année.
-          Les données renvoyées sont simulées (pas de vraie base de
-          données branchée pour l'instant), mais reproductibles : une
-          même date + un même boîtier redonnent toujours les mêmes
-          valeurs. */}
+      {/* Recherche des mesures enregistrées pour un jour / mois / année. */}
       <div className="selecteur recherche-historique">
         <label>
           Jour{" "}
@@ -333,8 +298,12 @@ export default function App() {
             ))}
           </select>
         </label>
-        <button type="button" onClick={lancerRecherche}>
-          Rechercher
+        <button
+          type="button"
+          onClick={lancerRecherche}
+          disabled={boitierId === null || rechercheEnCours}
+        >
+          {rechercheEnCours ? "Recherche…" : "Rechercher"}
         </button>
         {mode === "historique" && (
           <button type="button" onClick={revenirAuDirect}>
@@ -347,8 +316,9 @@ export default function App() {
 
       {mode === "historique" && resultatRecherche && (
         <div className="erreur" style={{ background: "#eef3fb", color: "#1d3a5f" }}>
-          Données simulées pour le {resultatRecherche.dateStr} ({boitier}) — aucune base de
-          données réelle n'est encore branchée.
+          {resultatRecherche.points.length === 0
+            ? `Aucune mesure le ${resultatRecherche.dateStr} (${boitier}).`
+            : `${resultatRecherche.points.length} mesure(s) le ${resultatRecherche.dateStr} (${boitier}). Les tuiles affichent la dernière de la journée.`}
         </div>
       )}
 
@@ -372,7 +342,7 @@ export default function App() {
                 --couleur-texte est une variable CSS lue par App.css pour teinter
                 le chiffre selon la métrique, indépendamment de l'état ok/crit. */}
             <div style={{ "--couleur-texte": m.color }}>
-              {m.value.toFixed(1)} {m.unit}
+              {m.value === null ? "—" : `${m.value.toFixed(1)} ${m.unit}`}
             </div>
             {/* Mini-graphique propre à cette métrique : 3e enfant de la tuile,
                 ne perturbe pas les sélecteurs :first-child/:nth-child(2) et
@@ -410,8 +380,10 @@ export default function App() {
         Exporter l'historique en CSV
       </button>
 
-      {/* CRUD sur les mesures de l'API (GET par id, POST, PUT, DELETE). */}
-      <GestionMesures />
+      {/* Gestion des mesures de l'API (GET par id, POST, DELETE).
+          key : changer de boîtier remet la section à zéro (la mesure chargée
+          appartenait à l'ancien boîtier). */}
+      <GestionMesures key={boitierId ?? "aucun"} boitier={boitierCourant} />
     </div>
   );
 }

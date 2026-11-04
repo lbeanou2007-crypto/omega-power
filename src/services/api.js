@@ -22,7 +22,7 @@ api.interceptors.response.use(
     } else if (error.code === 'ECONNABORTED') {
       message = "Le serveur met trop de temps a repondre.";
     } else {
-      message = "Impossible de joindre l'API Java (port 8443, HTTPS). Le backend est-il lance ?";
+      message = "Impossible de joindre l'API (hebergee sur Render). Verifie la connexion Internet.";
     }
 
     // On garde le code HTTP (404, 400...) pour que l'appelant puisse

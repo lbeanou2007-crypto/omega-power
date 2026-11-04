@@ -10,3 +10,12 @@ dist-ssr
 .idea
 .DS_Store
 *.log
+
+# Fichiers sensibles (mots de passe, cles) : jamais dans git
+src/pass*.txt
+*.p12
+*.key
+*.pem
+
+# Copie locale du code de l API du camarade (depot a part)
+batterie-connectee-api-*/
