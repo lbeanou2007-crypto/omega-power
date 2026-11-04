@@ -11,6 +11,8 @@
 //   /api/boitiers                          -> liste des boîtiers { id, nom }
 //   /api/boitiers/{boitierId}/mesures      -> mesures d'un boîtier
 //   /api/boitiers/{boitierId}/mesures/{id} -> une mesure précise
+//   /api/boitiers/{boitierId}/mesures/dernieres?limit=N -> les N dernières mesures
+//   /api/boitiers/{boitierId}/mesures/jour?date=AAAA-MM-JJ -> les mesures d'un jour
 // Une mesure renvoyée par l'API :
 //   { id, boitierId, boitierNom, soc, tension, courant, temp, alarme, dateMesureNc }
 import api from "./services/api.js";
@@ -20,27 +22,48 @@ export async function fetchBoitiers() {
   return (await api.get("/boitiers")).data;
 }
 
-// Dernière mesure d'un boîtier, au format attendu par les tuiles de App.jsx :
-// { soc, tension, courant, temp1, temp2 }.
-export async function fetchMesure(boitierId) {
-  const dernieres = (
-    await api.get(`/boitiers/${boitierId}/mesures/dernieres`, { params: { limit: 1 } })
-  ).data;
-
-  if (dernieres.length === 0) {
-    throw new Error("Aucune mesure disponible pour ce boîtier");
-  }
-  const derniere = dernieres[0];
-
-  // ⚠️ L'API n'a qu'un seul champ "temp" (pas temp1/temp2).
-  // On le duplique sur les deux pour ne pas casser l'affichage existant.
+// Transforme une mesure de l'API en point affichable par App.jsx (tuiles,
+// graphiques, CSV). "time" est la date de la mesure, pas celle de la requête.
+function versPoint(mesure) {
   return {
-    soc: derniere.soc,
-    tension: derniere.tension,
-    courant: derniere.courant,
-    temp1: derniere.temp,
-    temp2: derniere.temp,
+    id: mesure.id,
+    time: new Date(mesure.dateMesureNc).toLocaleString("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }),
+    timestamp: new Date(mesure.dateMesureNc).getTime(),
+    soc: mesure.soc,
+    tension: mesure.tension,
+    courant: mesure.courant,
+    // ⚠️ L'API n'a qu'un seul champ "temp" (pas temp1/temp2).
+    // On le duplique sur les deux pour ne pas casser l'affichage existant.
+    temp1: mesure.temp,
+    temp2: mesure.temp,
   };
+}
+
+// Convertit une liste de mesures en points, de la plus ancienne à la plus récente.
+function versPointsTries(mesures) {
+  return mesures.map(versPoint).sort((a, b) => a.timestamp - b.timestamp);
+}
+
+// GET /api/boitiers/{boitierId}/mesures/dernieres -> les dernières mesures enregistrées.
+export async function fetchDernieresMesures(boitierId, limit = 20) {
+  const { data } = await api.get(`/boitiers/${boitierId}/mesures/dernieres`, {
+    params: { limit },
+  });
+  return versPointsTries(data);
+}
+
+// GET /api/boitiers/{boitierId}/mesures/jour?date=AAAA-MM-JJ -> les mesures d'une journée.
+export async function fetchMesuresDuJour(boitierId, dateStr) {
+  const { data } = await api.get(`/boitiers/${boitierId}/mesures/jour`, {
+    params: { date: dateStr },
+  });
+  return versPointsTries(data);
 }
 
 // --- Gestion d'une mesure précise d'un boîtier -----------------------------

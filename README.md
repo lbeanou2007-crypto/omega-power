@@ -15,11 +15,11 @@ de l'équipe projet. Ce dépôt contient uniquement la partie IHM (front React).
 | Fonction | Détail |
 | --- | --- |
 | Liste des boîtiers | Chargée depuis l'API (`GET /api/boitiers`), choix dans un menu déroulant |
-| Mesures en direct | Dernière mesure du boîtier sélectionné, rafraîchie toutes les 2,5 s |
+| Mesures en direct | Dernière mesure enregistrée du boîtier sélectionné et sa date, rafraîchies toutes les 2,5 s |
 | Alertes | Chaque valeur est comparée aux plages de la fiche technique (état OK / critique) |
-| Graphiques | Courbe des 20 derniers points pour chaque grandeur (Recharts) |
+| Graphiques | Courbe des 20 dernières mesures enregistrées pour chaque grandeur (Recharts) |
 | Gestion des mesures | Rechercher, créer et supprimer une mesure (l'API ne permet plus de les modifier) |
-| Recherche historique | Recherche par jour / mois / année *(données simulées pour l'instant)* |
+| Recherche historique | Mesures enregistrées pour un jour / mois / année |
 | Export CSV | Export de l'historique affiché |
 | Test de coupure | Bouton « simuler déconnexion » pour vérifier le comportement sans réseau |
 
@@ -84,7 +84,8 @@ L'IHM est ensuite disponible sur **http://localhost:8443**.
 | Méthode | Route | Rôle |
 | --- | --- | --- |
 | GET | `/api/boitiers` | Liste des boîtiers `{ id, nom }` |
-| GET | `/api/boitiers/{id}/mesures/dernieres?limit=1` | Dernière mesure d'un boîtier |
+| GET | `/api/boitiers/{id}/mesures/dernieres?limit=20` | Dernières mesures d'un boîtier |
+| GET | `/api/boitiers/{id}/mesures/jour?date=AAAA-MM-JJ` | Mesures d'une journée |
 | GET | `/api/boitiers/{id}/mesures/{mesureId}` | Une mesure précise |
 | POST | `/api/boitiers/{id}/mesures` | Créer une mesure |
 | DELETE | `/api/boitiers/{id}/mesures/{mesureId}` | Supprimer une mesure |
@@ -140,8 +141,6 @@ par l'IHM actuelle.
 
 - L'API ne fournit qu'une seule température (`temp`) : elle est affichée pour les
   deux groupes de cellules en attendant `tempGroupe1` / `tempGroupe2`.
-- La recherche historique utilise des données simulées : à brancher sur la route
-  `GET /api/boitiers/{id}/mesures/jour?date=AAAA-MM-JJ`, désormais disponible.
 - Le proxy n'existe qu'en développement (`npm run dev`) : pour déployer l'IHM, il
   faudra un autre proxy ou que l'API autorise son origine (CORS).
 - Pas encore d'authentification des utilisateurs sur l'IHM.
