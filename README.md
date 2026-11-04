@@ -18,7 +18,7 @@ de l'équipe projet. Ce dépôt contient uniquement la partie IHM (front React).
 | Mesures en direct | Dernière mesure du boîtier sélectionné, rafraîchie toutes les 2,5 s |
 | Alertes | Chaque valeur est comparée aux plages de la fiche technique (état OK / critique) |
 | Graphiques | Courbe des 20 derniers points pour chaque grandeur (Recharts) |
-| Gestion des mesures | Rechercher, créer, modifier et supprimer une mesure (CRUD complet) |
+| Gestion des mesures | Rechercher, créer et supprimer une mesure (l'API ne permet plus de les modifier) |
 | Recherche historique | Recherche par jour / mois / année *(données simulées pour l'instant)* |
 | Export CSV | Export de l'historique affiché |
 | Test de coupure | Bouton « simuler déconnexion » pour vérifier le comportement sans réseau |
@@ -27,18 +27,20 @@ de l'équipe projet. Ce dépôt contient uniquement la partie IHM (front React).
 
 ```
  Navigateur  ──HTTP──▶  Serveur Vite (IHM)  ──HTTPS──▶  API Spring Boot  ──▶  Base de données
- (PC client)            port 8443                       192.168.100.197:9443
-                        proxy /api/...                  (machine du camarade)
+ (PC client)            port 8443                       batterie-connectee-api.onrender.com
+                        proxy /api/...                  (hébergée sur Render)
 ```
 
-Schéma détaillé : [`docs/flux_proxy_vite_api.png`](docs/flux_proxy_vite_api.png)
+Schéma de l'ancienne architecture, quand l'API était sur le réseau local :
+[`docs/flux_proxy_vite_api.png`](docs/flux_proxy_vite_api.png)
+
+Documentation de l'API : [Swagger](https://batterie-connectee-api.onrender.com/swagger-ui/index.html)
 
 Le navigateur appelle toujours `/api/...` sur le serveur Vite. Vite **redirige**
 ces requêtes vers l'API (voir `proxy` dans `vite.config.js`). Ce choix permet :
 
-- de ne parler qu'à une seule origine : pas de problème de **CORS** ;
-- de gérer le **certificat auto-signé** de l'API côté serveur, sans que
-  l'utilisateur ait à accepter une exception de sécurité dans son navigateur ;
+- de ne parler qu'à une seule origine : pas de problème de **CORS** (l'API répond
+  403 aux requêtes venant de `localhost:8443`, le proxy retire donc l'en-tête `Origin`) ;
 - de changer l'adresse de l'API dans un seul fichier (`.env`) sans toucher au code.
 
 ## Environnement technique
@@ -54,7 +56,7 @@ ces requêtes vers l'API (voir `proxy` dans `vite.config.js`). Ce choix permet :
 
 ## Installation et lancement
 
-Prérequis : Node.js 18 ou plus, et l'API du camarade joignable sur le réseau local.
+Prérequis : Node.js 18 ou plus, et un accès à Internet pour joindre l'API.
 
 ```bash
 npm install
@@ -75,7 +77,7 @@ L'IHM est ensuite disponible sur **http://localhost:8443**.
 | Variable | Rôle | Valeur par défaut |
 | --- | --- | --- |
 | `VITE_API_URL` | Préfixe des appels de l'IHM | `/api` (passe par le proxy) |
-| `VITE_API_PROXY_TARGET` | Adresse réelle de l'API | `https://192.168.100.197:9443` |
+| `VITE_API_PROXY_TARGET` | Adresse réelle de l'API | `https://batterie-connectee-api.onrender.com` |
 
 ## Routes de l'API utilisées
 
@@ -85,7 +87,6 @@ L'IHM est ensuite disponible sur **http://localhost:8443**.
 | GET | `/api/boitiers/{id}/mesures/dernieres?limit=1` | Dernière mesure d'un boîtier |
 | GET | `/api/boitiers/{id}/mesures/{mesureId}` | Une mesure précise |
 | POST | `/api/boitiers/{id}/mesures` | Créer une mesure |
-| PUT | `/api/boitiers/{id}/mesures/{mesureId}` | Modifier une mesure |
 | DELETE | `/api/boitiers/{id}/mesures/{mesureId}` | Supprimer une mesure |
 
 Format d'une mesure :
@@ -113,7 +114,7 @@ passe en état critique.
 └── src/
     ├── main.jsx             Montage de React dans la page
     ├── App.jsx              Tableau de bord : tuiles, graphiques, historique, export CSV
-    ├── GestionMesures.jsx   Formulaire CRUD des mesures du boîtier sélectionné
+    ├── GestionMesures.jsx   Recherche, création et suppression des mesures du boîtier sélectionné
     ├── db.js                Tous les appels à l'API des boîtiers et des mesures
     ├── services/api.js      Instance axios + traduction des erreurs réseau
     └── styles/global.css    Couleurs et styles de base
@@ -139,9 +140,9 @@ par l'IHM actuelle.
 
 - L'API ne fournit qu'une seule température (`temp`) : elle est affichée pour les
   deux groupes de cellules en attendant `tempGroupe1` / `tempGroupe2`.
-- La recherche historique utilise des données simulées : à brancher sur l'API
-  dès qu'une route de recherche par date existe.
-- Le proxy accepte le certificat auto-signé de l'API (`secure: false`) : à remplacer
-  par un certificat signé par une autorité reconnue en production.
+- La recherche historique utilise des données simulées : à brancher sur la route
+  `GET /api/boitiers/{id}/mesures/jour?date=AAAA-MM-JJ`, désormais disponible.
+- Le proxy n'existe qu'en développement (`npm run dev`) : pour déployer l'IHM, il
+  faudra un autre proxy ou que l'API autorise son origine (CORS).
 - Pas encore d'authentification des utilisateurs sur l'IHM.
 - Supprimer les fichiers du modèle de départ qui ne servent plus.

@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { fetchMesureParId, creerMesure, modifierMesure, supprimerMesure } from "./db";
+import { fetchMesureParId, creerMesure, supprimerMesure } from "./db";
 
-// Section "Gestion des mesures" : CRUD complet sur les mesures du boîtier
-// sélectionné (routes /api/boitiers/{boitierId}/mesures).
+// Section "Gestion des mesures" du boîtier sélectionné
+// (routes /api/boitiers/{boitierId}/mesures).
 // - Rechercher (GET /{id})  : charge une mesure et remplit le formulaire.
 // - Créer (POST)            : ajoute une nouvelle mesure avec les valeurs du formulaire.
-// - Enregistrer (PUT /{id}) : met à jour la mesure chargée (visible seulement après une recherche).
 // - Supprimer (DELETE /{id}): efface la mesure chargée, après confirmation.
+// L'API ne permet plus de modifier une mesure (pas de route PUT).
 
 const FORMULAIRE_VIDE = {
   soc: "",
@@ -118,20 +118,6 @@ export default function GestionMesures({ boitier }) {
     });
   }
 
-  function enregistrer() {
-    const { valeurs, erreur } = lireFormulaire(form);
-    if (erreur) {
-      setRetour({ type: "erreur", texte: `Erreur : ${erreur}` });
-      return;
-    }
-    const id = mesureChargee.id;
-    executer(async () => {
-      const modifiee = await modifierMesure(boitier, id, valeurs);
-      chargerDansFormulaire(modifiee);
-      setRetour({ type: "succes", texte: `Mesure ${id} modifiée.` });
-    }, id);
-  }
-
   function supprimer() {
     const id = mesureChargee.id;
     if (!window.confirm(`Supprimer définitivement la mesure ${id} ?`)) return;
@@ -185,7 +171,7 @@ export default function GestionMesures({ boitier }) {
         </div>
       )}
 
-      {/* Formulaire utilisé à la fois pour créer (POST) et modifier (PUT) */}
+      {/* Formulaire de création (POST), prérempli après une recherche. */}
       <div className="selecteur">
         <label>
           État de charge (%){" "}
@@ -243,16 +229,11 @@ export default function GestionMesures({ boitier }) {
         <button type="button" onClick={creer} disabled={enCours}>
           Créer
         </button>
-        {/* PUT et DELETE n'ont de sens que sur une mesure déjà retrouvée. */}
+        {/* DELETE n'a de sens que sur une mesure déjà retrouvée. */}
         {mesureChargee && (
-          <>
-            <button type="button" onClick={enregistrer} disabled={enCours}>
-              Enregistrer les modifications
-            </button>
-            <button type="button" onClick={supprimer} disabled={enCours}>
-              Supprimer
-            </button>
-          </>
+          <button type="button" onClick={supprimer} disabled={enCours}>
+            Supprimer
+          </button>
         )}
       </div>
 

@@ -1,14 +1,13 @@
-// Ce module fait les vrais appels réseau vers l'API du camarade (Spring Boot).
+// Ce module fait les vrais appels réseau vers l'API du camarade (Spring Boot),
+// hébergée sur Render.
 //
 // On passe par l'instance axios partagée (services/api.js), dont la baseURL
 // est "/api" : Vite redirige ces requêtes vers l'API réelle (voir le "proxy"
 // dans vite.config.js, cible définie par VITE_API_PROXY_TARGET dans .env).
 // Avantage : le navigateur ne voit qu'une origine locale, donc pas de CORS
-// à configurer côté API, et pas d'exception de certificat auto-signé à
-// accepter manuellement (le proxy, côté serveur Node, ignore la validation
-// du certificat grâce à "secure: false").
+// à configurer côté API.
 //
-// Structure de l'API (depuis le 30/09/2026) :
+// Structure de l'API utilisée ici :
 //   /api/boitiers                          -> liste des boîtiers { id, nom }
 //   /api/boitiers/{boitierId}/mesures      -> mesures d'un boîtier
 //   /api/boitiers/{boitierId}/mesures/{id} -> une mesure précise
@@ -44,10 +43,11 @@ export async function fetchMesure(boitierId) {
   };
 }
 
-// --- CRUD sur une mesure précise d'un boîtier ------------------------------
+// --- Gestion d'une mesure précise d'un boîtier -----------------------------
+// L'API ne permet plus de modifier une mesure (pas de route PUT).
 // "valeurs" = { soc, tension, courant, temp, alarme } (saisies du formulaire).
 
-// Corps attendu par l'API pour POST/PUT : la mesure + le boîtier auquel elle
+// Corps attendu par l'API pour POST : la mesure + le boîtier auquel elle
 // appartient ("boitier" est obligatoire, avec son nom).
 function corpsMesure(boitier, valeurs) {
   return { boitier: { id: boitier.id, nom: boitier.nom }, ...valeurs };
@@ -62,12 +62,6 @@ export async function fetchMesureParId(boitier, id) {
 // (avec son nouvel id). L'API fixe elle-même la date de mesure.
 export async function creerMesure(boitier, valeurs) {
   return (await api.post(`/boitiers/${boitier.id}/mesures`, corpsMesure(boitier, valeurs))).data;
-}
-
-// PUT /api/boitiers/{boitierId}/mesures/{id} -> remplace les valeurs de la mesure.
-export async function modifierMesure(boitier, id, valeurs) {
-  return (await api.put(`/boitiers/${boitier.id}/mesures/${id}`, corpsMesure(boitier, valeurs)))
-    .data;
 }
 
 // DELETE /api/boitiers/{boitierId}/mesures/{id} -> supprime la mesure.

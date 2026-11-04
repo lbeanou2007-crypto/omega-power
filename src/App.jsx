@@ -435,7 +435,7 @@ export default function App() {
         Exporter l'historique en CSV
       </button>
 
-      {/* CRUD sur les mesures de l'API (GET par id, POST, PUT, DELETE).
+      {/* Gestion des mesures de l'API (GET par id, POST, DELETE).
           key : changer de boîtier remet la section à zéro (la mesure chargée
           appartenait à l'ancien boîtier). */}
       <GestionMesures key={boitierId ?? "aucun"} boitier={boitierCourant} />
